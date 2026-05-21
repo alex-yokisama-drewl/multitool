@@ -4,6 +4,16 @@ Running log of noteworthy choices, caveats, and non-obvious recipes. Newest at t
 
 ---
 
+## 2026-05-21 — pdfium binary: dynamic-load via `build.rs` download
+
+**Why.** PDF→Images C1 needed the native pdfium library wired up cross-OS. Static linking via `pdfium-render`'s `static` feature requires libclang + a prebuilt static pdfium per OS, which would blow up CI and saddle every contributor with a Windows toolchain story. Vendoring the binaries grows the repo by ~30 MB across three platforms and turns updates into a manual chore. Requiring contributors to install pdfium system-wide breaks our reproducibility goal for a learning project. Dynamic-load with a build-time download keeps the source tree clean, builds fast, and pins exactly one upstream version.
+
+**Effect.** `multitool-core/build.rs` downloads the platform-matched archive from <https://github.com/bblanchon/pdfium-binaries> at the pinned `chromium/7763` tag, extracts it into `OUT_DIR`, and exports the absolute library path as `PDFIUM_LIB_PATH`. The lib reads that path via `env!` in `src/pdfium.rs::bindings`. The pin matches `pdfium-render` 0.9.1's default `pdfium_7763` feature — bump the two together. `PDFIUM_LIB_PATH` can be set in the environment to bypass the download (offline builds, CI cache layer, packaged-binary override).
+
+**Phase-1 gap to close in C6.** The baked path points into the build machine's `target/...` tree — fine for `cargo test` and `pnpm tauri dev`, broken for `pnpm tauri build` artifacts handed to a different machine. The Tauri command in C6 owns re-resolving to a Tauri resource path before the binary ships. Adding `pdfium.{so,dll,dylib}` as a bundled resource via `tauri.conf.json` is the planned approach; revisit if it gets ugly.
+
+---
+
 ## 2026-05-21 — AppError: add `Encrypted` variant; corrupt + zero-page reuse `ProcessingFailed`
 
 **Why.** PDF→Images planning surfaced three failure modes worth distinguishing in the UI: password-protected PDFs, corrupt PDFs, and zero-page PDFs. Only the first is meaningfully different from the user's perspective (no retry possible without password input, which Phase 1 doesn't offer); the other two are "this file is broken" with different reasons inside. Adding a variant per failure mode would over-fit the enum to one tool.

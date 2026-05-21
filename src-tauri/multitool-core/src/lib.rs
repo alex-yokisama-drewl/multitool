@@ -8,5 +8,6 @@
 
 pub mod error;
 pub mod ipc;
+pub mod pdfium;
 
 pub use error::{AppError, AppResult};

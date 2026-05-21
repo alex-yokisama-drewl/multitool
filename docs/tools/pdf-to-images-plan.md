@@ -22,15 +22,13 @@ The one decision still TBD: **pdfium binary distribution strategy** — resolved
 
 ## Commits
 
-### [ ] C1 — chore(deps): add pdfium-render + image, pdf-open smoke test
-**Spike — retires the pdfium binary risk.**
-- Add `pdfium-render` + `image` to `multitool-core/Cargo.toml`
-- Pick + implement the pdfium binary strategy. Candidates:
-  - `pdfium-render`'s `static` feature (compile-time link, no runtime resolution)
-  - Bundle `pdfium.{dll, so, dylib}` per OS via `pdfium-render`'s runtime-load helper (downloaded by a build script)
-- Check in fixture: `multitool-core/tests/fixtures/three-page.pdf` (≤ 20 KB)
-- **Tests:** 1 integration test in `multitool-core/tests/` that opens the fixture and asserts `page_count == 3`. Must pass on all 3 OSes in CI.
-- **DECISIONS.md entry:** pdfium binary strategy chosen, why, how it's built/distributed (build script? committed binaries? feature flag?).
+### [x] C1 — chore(deps): add pdfium-render + image, pdf-open smoke test
+**Spike — retired the pdfium binary risk.**
+- `pdfium-render = "0.9"` + `image = "0.25"` added to `multitool-core/Cargo.toml`
+- Strategy: dynamic-load via `build.rs` download from bblanchon/pdfium-binaries at the pinned `chromium/7763` tag; library path baked into the lib via `PDFIUM_LIB_PATH` env var. See [../../DECISIONS.md](../../DECISIONS.md) → "pdfium binary: dynamic-load via `build.rs` download".
+- Fixture `multitool-core/tests/fixtures/three-page.pdf` (580 B) committed alongside the generator at `scripts/gen_pdf_fixture.py`.
+- Smoke test at `multitool-core/tests/pdfium_smoke.rs` opens the fixture and asserts `page_count == 3` — passes locally; CI verifies on linux/macos/windows.
+- **C6 carryover:** runtime path resolution for bundled releases is unsolved — captured in the DECISIONS entry's "Phase-1 gap" paragraph.
 
 ### [ ] C2 — feat(core): AppError::Encrypted variant
 - Add `Encrypted` variant to `multitool_core::error::AppError` (no payload)
