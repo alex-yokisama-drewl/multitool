@@ -54,10 +54,18 @@ pub struct Opts {
 }
 
 /// One rendered + encoded page passed to the `on_page` callback.
+///
+/// `total` is the source document's total page count and is the same value on
+/// every page in a job — carried per-page so streaming callers (e.g.
+/// [`super::job::run_job`]) can size a [`super::writer::PageWriter`] on the
+/// first `on_page` invocation without a separate "count pages" pass over the
+/// PDF.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PageOutput {
     /// 0-based page index in source-document order.
     pub index: u32,
+    /// Source document's total page count (constant across a job).
+    pub total: u32,
     /// PNG- or JPEG-encoded bytes (per `Opts::format`).
     pub encoded: Vec<u8>,
 }
@@ -131,6 +139,7 @@ where
 
         on_page(PageOutput {
             index: index as u32,
+            total: page_count,
             encoded,
         })?;
     }
@@ -207,6 +216,7 @@ mod tests {
         assert_eq!(pages.len(), 3);
         for (i, page) in pages.iter().enumerate() {
             assert_eq!(page.index, i as u32);
+            assert_eq!(page.total, 3, "page {i} reported wrong total");
             assert!(
                 page.encoded.starts_with(PNG_MAGIC),
                 "page {i} not PNG-encoded"

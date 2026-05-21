@@ -60,15 +60,17 @@ The one decision still TBD: **pdfium binary distribution strategy** — resolved
 - **Empty-folder pitfall:** `create` eagerly mkdirs, so calling it before a doomed convert (encrypted/empty) would leave an empty folder. Doc-commented as a C6-coordination concern — C6 should defer `PageWriter::create` until at least one page is in hand.
 - **Tests (`writer.rs::tests`, 6 total):** 3-page job + 3-digit padding; padding widens to 4 for `total=1000`; JPEG → `.jpg`; collision routes through `unique_path` and leaves the pre-existing folder untouched; early termination via `drop(writer)` leaves the first two files on disk; `#[cfg(unix)]` permission-denied test chmods `0o555` and asserts the `AppError::PermissionDenied` mapping (Windows can't model POSIX write-bits cleanly — note inline; the mapping in `io_to_app_err` is OS-agnostic, just not end-to-end exercised on Windows).
 
-### [ ] C6 — feat(tools): pdf_to_images Tauri command
-- Module: `src-tauri/src/tools/pdf_to_images/mod.rs`
-- `#[tauri::command] async fn convert_pdf_to_images(path: PathBuf, opts: Opts) -> Result<JobResult, AppError>`
-- Behaviour: load file → register a `JobId` with `JobRegistry` → call `multitool_core::tools::pdf_to_images::convert` with a progress sink that emits `tool:progress` events keyed by JobId → pipe pages into the writer (target dir derived from input path) → emit `tool:complete` or `tool:error` → return
-- **1-line edit to `src-tauri/src/tools/mod.rs::register_commands`** (the registry contract — no other shared-file edits)
-- **Tests (`tauri::test`):**
-  - Happy path: command returns OK; expected `tool:progress` events emitted in order; `tool:complete` fires
-  - Cancellation via `cancel_job` mid-run → command returns `Err(Cancelled)`; partial files exist on disk
-  - Bad path → `Err(FileNotFound)`
+### [x] C6 — feat(tools): pdf_to_images Tauri command
+- **Orchestration pushed to core** as `multitool_core::tools::pdf_to_images::run_job(input, opts, cancel, on_progress)`. The shell command is a ~70-line shim that registers the job, runs `run_job` on a `spawn_blocking` thread, wires `on_progress` to `app.emit("tool:progress", …)`, and emits `tool:complete` / `tool:error` after the join. All behavior worth testing lives in core so it runs under `cargo test -p multitool-core` on every CI OS — see "test-lane divergence" below.
+- **`PageOutput::total` added** so `run_job`'s `on_page` adapter can lazy-create the writer on the first page (`PageWriter::create(target, format, page.total)`). Side benefit: a doomed convert (encrypted/empty PDF) leaves no empty output folder. C5's "empty-folder pitfall" doc-warning still applies for any caller that bypasses `run_job` and creates a writer directly.
+- **`AppError: Clone`** added so `tool:error` events can serialize a borrow-free payload through Tauri's `emit` (`Serialize + Clone` bound).
+- **Runtime-generic command:** `convert_pdf_to_images<R: tauri::Runtime>(app: AppHandle<R>, …)`. Defaulting to bare `tauri::AppHandle` failed `tauri::generate_handler!`'s `CommandArg` resolution against the generic `Builder<R>` from `register_commands`.
+- **Registry contract honored:** the *only* shared-file edit is the 3-line addition to `src-tauri/src/tools/mod.rs` (`pub mod pdf_to_images;` + the `convert_pdf_to_images` entry in `generate_handler!`).
+- **Event shapes** (private to the shell module, intentionally not in core):
+  - `tool:progress` → `{ job_id, progress: { page, total } }`
+  - `tool:complete` → `{ job_id, result: JobResult }`
+  - `tool:error` → `{ job_id, error: AppError }` (relies on the `{ kind, message }` serde impl from C2)
+- **Test-lane divergence (plan shift):** dropped the planned `tauri::test` tests in favor of seven core unit tests on `run_job`. **Why:** both CI and lefthook run `cargo test -p multitool-core --all-targets` (Windows getrandom blocker — `DECISIONS.md` → "Workspace split"), so `tauri::test` cases in the shell crate wouldn't gate anything. The seven core tests cover the plan's three required behaviours (happy path with in-order progress + correct files, cancellation mid-run leaves partial output, missing input → `FileNotFound`) plus encrypted-PDF, output-dir collision via `unique_path`, `on_progress`-error propagation, and a `derive_output_dir` unit. The IPC-event contract is verified at the C7 boundary via the Vitest wrapper tests; the Playwright happy-path in C9 closes the end-to-end loop.
 
 ### [ ] C7 — feat(lib): IPC wrapper for pdf-to-images
 **Sets the pattern future IPC wrappers will copy.**
@@ -118,7 +120,7 @@ The one decision still TBD: **pdfium binary distribution strategy** — resolved
 | C3 | ~10 | — | — | — |
 | C4 | ~6 | — | — | — |
 | C5 | ~4 | — | — | — |
-| C6 | — | ~3 (`tauri::test`) | — | — |
+| C6 | 7 (`run_job` in core) | — | — | — |
 | C7 | — | — | ~5 | — |
 | C8 | — | — | ~5 | — |
 | C9 | — | — | — | 1 |

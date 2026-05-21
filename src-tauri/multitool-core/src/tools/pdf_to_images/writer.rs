@@ -108,9 +108,10 @@ fn io_to_app_err(path: &Path, err: io::Error) -> AppError {
 mod tests {
     use super::*;
 
-    fn synth_page(index: u32, bytes: &[u8]) -> PageOutput {
+    fn synth_page(index: u32, total: u32, bytes: &[u8]) -> PageOutput {
         PageOutput {
             index,
+            total,
             encoded: bytes.to_vec(),
         }
     }
@@ -121,9 +122,9 @@ mod tests {
         let target = tmp.path().join("doc_pages");
 
         let writer = PageWriter::create(&target, Format::Png, 3).unwrap();
-        writer.write_page(&synth_page(0, b"alpha")).unwrap();
-        writer.write_page(&synth_page(1, b"beta")).unwrap();
-        writer.write_page(&synth_page(2, b"gamma")).unwrap();
+        writer.write_page(&synth_page(0, 3, b"alpha")).unwrap();
+        writer.write_page(&synth_page(1, 3, b"beta")).unwrap();
+        writer.write_page(&synth_page(2, 3, b"gamma")).unwrap();
 
         assert_eq!(writer.dir(), target);
         assert_eq!(fs::read(target.join("page_001.png")).unwrap(), b"alpha");
@@ -137,7 +138,7 @@ mod tests {
         let target = tmp.path().join("big_pages");
 
         let writer = PageWriter::create(&target, Format::Png, 1000).unwrap();
-        writer.write_page(&synth_page(0, b"data")).unwrap();
+        writer.write_page(&synth_page(0, 1000, b"data")).unwrap();
 
         assert!(target.join("page_0001.png").is_file());
         assert!(!target.join("page_001.png").exists());
@@ -149,7 +150,7 @@ mod tests {
         let target = tmp.path().join("doc_pages");
 
         let writer = PageWriter::create(&target, Format::Jpeg, 1).unwrap();
-        writer.write_page(&synth_page(0, b"jpeg-bytes")).unwrap();
+        writer.write_page(&synth_page(0, 1, b"jpeg-bytes")).unwrap();
 
         assert!(target.join("page_001.jpg").is_file());
     }
@@ -162,7 +163,7 @@ mod tests {
         fs::write(target.join("preexisting.txt"), b"don't touch").unwrap();
 
         let writer = PageWriter::create(&target, Format::Png, 1).unwrap();
-        writer.write_page(&synth_page(0, b"new")).unwrap();
+        writer.write_page(&synth_page(0, 1, b"new")).unwrap();
 
         let resolved = tmp.path().join("doc_pages (1)");
         assert_eq!(writer.dir(), resolved);
@@ -179,8 +180,8 @@ mod tests {
         let target = tmp.path().join("doc_pages");
 
         let writer = PageWriter::create(&target, Format::Png, 5).unwrap();
-        writer.write_page(&synth_page(0, b"a")).unwrap();
-        writer.write_page(&synth_page(1, b"b")).unwrap();
+        writer.write_page(&synth_page(0, 5, b"a")).unwrap();
+        writer.write_page(&synth_page(1, 5, b"b")).unwrap();
         // Caller stops here (simulates cancellation or an `on_page` error
         // earlier up the stack); writer is dropped without touching pages 2–4.
         drop(writer);

@@ -1,7 +1,7 @@
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Clone, Debug, Error)]
 pub enum AppError {
     #[error("file not found: {path}")]
     FileNotFound { path: String },
