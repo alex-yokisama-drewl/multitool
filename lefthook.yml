@@ -1,0 +1,42 @@
+# Lefthook configuration.
+#
+# Hooks install automatically when `pnpm install` runs (see `prepare` script
+# in package.json). To trigger a hook manually:
+#
+#   pnpm exec lefthook run pre-commit
+#
+# Each job has a `glob` filter so e.g. Rust-only commits don't pay the
+# frontend lint cost (and vice versa). The commands themselves still run
+# crate- / project-wide — globs only decide whether the job runs at all.
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: rust-fmt
+      glob: "src-tauri/**/*.rs"
+      root: src-tauri/
+      run: cargo fmt --all -- --check
+
+    - name: rust-clippy
+      glob: "src-tauri/**/*.rs"
+      root: src-tauri/
+      run: cargo clippy --all-targets -- -D warnings
+
+    - name: eslint
+      glob: "*.{js,jsx,mjs,cjs,ts,tsx}"
+      run: pnpm lint
+
+    - name: typecheck
+      glob: "*.{ts,tsx}"
+      run: pnpm typecheck
+
+    - name: prettier
+      glob: "*.{json,md,html,css,yml,yaml}"
+      run: pnpm format:check
+
+pre-push:
+  jobs:
+    - name: rust-tests
+      root: src-tauri/
+      run: cargo test
+    # Frontend (Vitest) tests join here in Phase F.

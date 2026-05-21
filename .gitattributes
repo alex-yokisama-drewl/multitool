@@ -1,0 +1,36 @@
+# Normalize line endings to LF on checkin; let Git pick the working-tree EOL.
+* text=auto eol=lf
+
+# Source — explicit so Windows clones don't surprise us.
+*.rs       text eol=lf
+*.toml     text eol=lf
+*.ts       text eol=lf
+*.tsx      text eol=lf
+*.js       text eol=lf
+*.jsx      text eol=lf
+*.mjs      text eol=lf
+*.cjs      text eol=lf
+*.json     text eol=lf
+*.html     text eol=lf
+*.css      text eol=lf
+*.md       text eol=lf
+*.yml      text eol=lf
+*.yaml     text eol=lf
+
+# Lockfiles: union merge picks both sides of a merge conflict so we resolve
+# by re-running the package manager instead of hand-editing.
+Cargo.lock     merge=union
+pnpm-lock.yaml merge=union
+
+# Binaries — never normalize.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.icns  binary
+*.pdf   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary

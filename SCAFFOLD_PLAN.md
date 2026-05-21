@@ -82,13 +82,21 @@ tests in `error.rs` / `ipc/mod.rs` can use `.unwrap()` freely.
 
 ---
 
-## Phase E — Quality tooling
+## Phase E — Quality tooling — DONE in `chore: add lefthook hooks and changelog config`
 
-1. **`lefthook`** for pre-commit: `cargo fmt`, `cargo clippy -- -D warnings` (changed files), `pnpm lint`, `pnpm typecheck`. Pre-push: full test run.
-2. `.editorconfig`, `.gitattributes` (LF line endings, mark `Cargo.lock` / `pnpm-lock.yaml` as merge=union or similar).
-3. `.gitignore` covering `target/`, `dist/`, `node_modules/`, OS junk, IDE files.
-4. **`git-cliff`** config for changelog generation from Conventional Commits (SPEC §8.2).
-5. **Checkpoint commit:** `chore: add lefthook hooks and changelog config`
+`lefthook` added as a devDep (npm wrapper that ships the binary); a `prepare`
+script wires hooks on every `pnpm install`. `lefthook.yml` glob-gates each
+job: `rust-fmt` / `rust-clippy` only fire when `src-tauri/**/*.rs` is staged,
+`eslint` / `typecheck` only on JS/TS, `prettier` on JSON/MD/HTML/CSS/YAML.
+Pre-push runs `cargo test`; Vitest joins it in Phase F when the runner
+exists. `.editorconfig` enforces LF + UTF-8 (4-space Rust, 2-space rest;
+trailing-whitespace preserved in `*.md` so CommonMark line breaks survive).
+`.gitattributes` normalises EOL to LF, marks `Cargo.lock` and
+`pnpm-lock.yaml` as `merge=union`, and tags binary asset extensions. Root
+`.gitignore` gained `target/`, coverage outputs (`coverage/`, `.nyc_output`,
+`lcov.info`), Playwright outputs, and `Thumbs.db` so future phases don't
+need to revisit it. `cliff.toml` covers Conventional Commits → Markdown
+changelog (no devDep; install `git-cliff` ad-hoc when cutting a release).
 
 ---
 

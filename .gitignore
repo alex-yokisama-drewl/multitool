@@ -7,16 +7,29 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Build artifacts
 node_modules
 dist
 dist-ssr
+target
 *.local
+
+# Coverage (cargo-llvm-cov / vitest)
+coverage
+.nyc_output
+lcov.info
+
+# Playwright (lands in Phase F)
+test-results
+playwright-report
+.playwright
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
 .idea
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
