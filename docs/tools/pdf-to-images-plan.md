@@ -51,14 +51,14 @@ The one decision still TBD: **pdfium binary distribution strategy** — resolved
 - `tempfile = "3"` added to `[dev-dependencies]` for the tests.
 - **Tests:** all 6 from the plan land in `fs.rs::tests` (free target, file collision, double collision, directory collision, multi-dot stem, no-extension). All pass; clippy clean with `unwrap_used`/`expect_used` denial intact (only the unwrap-allowed test block uses `.unwrap()`).
 
-### [ ] C5 — feat(core): pdf-pages output writer
-- Module: `multitool-core/src/tools/pdf_to_images/writer.rs`
-- API consumes a `PageOutput` stream and a target dir → writes `page_NNN.{ext}` files. Resolves the target dir through `unique_path`. Zero-padding widens past 999 pages based on declared total (or post-hoc rename if total unknown — decide).
-- **Tests (tempdir):**
-  - 3-page job → 3 files named `page_001..page_003.png`
-  - Padding widens for ≥ 1000 pages → `page_0001..` (use synthetic page-count, no real rendering)
-  - Read-only target dir → `Err(AppError::PermissionDenied)`
-  - Early termination → already-written files remain on disk
+### [x] C5 — feat(core): pdf-pages output writer
+- Module: `multitool-core/src/tools/pdf_to_images/writer.rs`; `PageWriter` re-exported from the tool's `mod.rs`.
+- **API shape (decided):** struct + methods, not a stream consumer. `PageWriter::create(target, format, total_pages) -> AppResult<Self>` resolves through `unique_path` and creates the dir eagerly; `write_page(&PageOutput) -> AppResult<()>` writes one file synchronously; `dir() -> &Path` exposes the resolved dir. Picked over an iterator-consumer API so C6's Tauri command can pass `|p| writer.write_page(&p)` straight into convert's existing `on_page` callback — no second adapter layer.
+- **Padding (decided):** caller passes `total_pages` up front (`pad_width = max(3, digits(total))`). Rejected the post-hoc-rename alternative since convert.rs already knows the page count internally — C6 will need to surface it via a small refactor (or render the first page then create the writer); cleaner than two-pass renames on disk.
+- **JPEG extension:** `.jpg` (de-facto standard; matches `image::ImageFormat::Jpeg::extensions_str()[0]`). PNG → `.png`. Inline matched in `extension_for`.
+- **1-based filenames:** `page.index` is 0-based but the on-disk name is 1-based (`page_001` for index 0) — matches `docs/tools/pdf-to-images.md` and ARCHITECTURE §3.3. Documented on `write_page`.
+- **Empty-folder pitfall:** `create` eagerly mkdirs, so calling it before a doomed convert (encrypted/empty) would leave an empty folder. Doc-commented as a C6-coordination concern — C6 should defer `PageWriter::create` until at least one page is in hand.
+- **Tests (`writer.rs::tests`, 6 total):** 3-page job + 3-digit padding; padding widens to 4 for `total=1000`; JPEG → `.jpg`; collision routes through `unique_path` and leaves the pre-existing folder untouched; early termination via `drop(writer)` leaves the first two files on disk; `#[cfg(unix)]` permission-denied test chmods `0o555` and asserts the `AppError::PermissionDenied` mapping (Windows can't model POSIX write-bits cleanly — note inline; the mapping in `io_to_app_err` is OS-agnostic, just not end-to-end exercised on Windows).
 
 ### [ ] C6 — feat(tools): pdf_to_images Tauri command
 - Module: `src-tauri/src/tools/pdf_to_images/mod.rs`

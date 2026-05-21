@@ -7,5 +7,7 @@
 //! Per-tool spec: `docs/tools/pdf-to-images.md`. Build plan: `docs/tools/pdf-to-images-plan.md`.
 
 mod convert;
+mod writer;
 
 pub use convert::{convert, Format, JobSummary, Opts, PageOutput};
+pub use writer::PageWriter;
