@@ -8,7 +8,8 @@
 - **Edit this file when scope shifts.** If a commit splits, merges, gets reordered, or is dropped — update the list. This doc should always reflect the actual path forward, not the original plan. Stale steps are worse than no steps.
 - **Architectural choices go to [../../DECISIONS.md](../../DECISIONS.md), not here.** This file is the checklist; the why-history lives in DECISIONS.
 - **One open question at a time.** If you hit a fork that isn't already resolved in DECISIONS, surface it in chat with the user before committing — same protocol as the original planning session.
-- **Per-PR checklist still applies.** Every commit gates on fmt, clippy, pnpm lint/typecheck/test, and `pnpm tauri build --no-bundle`. See [../../CLAUDE.md → Per-PR checklist](../../CLAUDE.md). Lefthook enforces a subset on commit; the rest is your responsibility before pushing.
+- **Per-commit gates apply locally:** fmt, clippy, pnpm lint/typecheck/test, and `pnpm tauri build --no-bundle` must be green before the commit lands. See [../../CLAUDE.md → Per-PR checklist](../../CLAUDE.md). Lefthook enforces a subset on commit; the rest is your responsibility.
+- **Cross-OS CI check is opt-in mid-stream.** Local gates are linux-only. After any commit that could plausibly break Windows/macOS (new native deps, build scripts, FS code, anything path-shaped), ask the user whether to push `feat/pdf-to-images` and watch CI before continuing — don't gate on it by default. Pure-Rust pure-logic commits can usually wait for the PR-time CI sweep.
 
 ## Resolved up front
 
