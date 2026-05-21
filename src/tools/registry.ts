@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import { pdfToImagesTool } from "./pdf-to-images";
 
 export type ToolCategory = "convert" | "media" | "text" | "utility";
 
@@ -11,4 +12,4 @@ export interface Tool {
   component: ComponentType;
 }
 
-export const tools: readonly Tool[] = [];
+export const tools: readonly Tool[] = [pdfToImagesTool];

@@ -82,19 +82,14 @@ The one decision still TBD: **pdfium binary distribution strategy** — resolved
 - **Cleanup is finally-blocked:** the `listen` unsubscribe and the abort-listener `removeEventListener` always run, even when invoke rejects — no leaks on the error path.
 - **Tests (`pdfToImages.test.ts`, 7 total — `@tauri-apps/api/{core,event}` mocked via `vi.hoisted`):** invoke args (`path`+`opts`); progress events filtered by JobId (a fake "other-job" event is ignored, the real two are forwarded in order); unlisten fires on success; unlisten fires on error; mid-run abort calls `cancel_job` with the captured JobId; arbitrary error envelope round-trips; already-aborted signal short-circuits before invoke/listen.
 
-### [ ] C8 — feat(tools): pdf-to-images frontend module
-- Folder: `src/tools/pdf-to-images/`
-  - `index.ts` — `Tool` metadata (`{ id: "pdf-to-images", name, description, category: "convert", route: "/tools/pdf-to-images", component }`)
-  - `PdfToImages.tsx` — file picker → form (format radio, DPI input) → Convert button → progress bar → result view ("Open output folder", "Convert another")
-  - `types.ts` — TS mirrors of Rust `Opts`, `JobResult`
-- Generate shadcn primitives: `pnpm dlx shadcn add button input progress radio-group label` (refine the exact list during impl)
-- **1-line edit to `src/tools/registry.ts`** (the registry contract)
-- **Tests (Vitest + Testing Library):**
-  - Renders with default option values
-  - Selecting JPEG + DPI 300 → IPC wrapper called with those args
-  - Progress events render in the progress bar
-  - Error from IPC → toast renders with `message`
-  - Cancel button → `signal.abort()` called
+### [x] C8 — feat(tools): pdf-to-images frontend module
+- **Folder:** `src/tools/pdf-to-images/{index.ts, PdfToImages.tsx, types.ts}`. `types.ts` re-exports from `@/lib/tools/pdfToImages` — the shapes already live there; the per-tool file keeps the folder self-describing per ARCHITECTURE §3.1.
+- **Registry edit** kept to the contract: a single import + array-entry edit in `src/tools/registry.ts`. Pre-existing `Dashboard.test.tsx` asserted the empty-state placeholder and had to flip to assert the populated state — same shared-file edit policy: the test belongs to the registry contract, not the tool.
+- **New plugins (scope shift recorded in DECISIONS):** added `tauri-plugin-dialog` + `tauri-plugin-opener` (Rust) and `@tauri-apps/plugin-dialog` + `@tauri-apps/plugin-opener` (JS), with the two new capability grants in `src-tauri/capabilities/default.json`. The file picker can't be served by `<input type=file>` (no OS path in Tauri's webview), and "Open output folder" wants `revealItemInDir` — both are general-purpose infrastructure future tools will reuse. Surface plugin calls live in a new `src/lib/system.ts` to keep the IPC seam consistent with `src/lib/tools/`.
+- **shadcn primitives:** `pnpm dlx shadcn add button input progress radio-group label` — five generated files committed under `src/components/ui/`. Generated `progress.tsx` had a `value || 0` flagged by the `prefer-nullish-coalescing` rule; flipped to `?? 0` (only divergence from the shadcn template). The fast-refresh-only-export warning on `button.tsx` (because `buttonVariants` is co-exported) is shadcn's standard layout — non-blocking, kept as-is.
+- **Tests setup gap fixed:** `tests/setup.ts` now installs `afterEach(cleanup)` from Testing Library. Vitest runs with `globals: false`, so RTL's auto-cleanup never registered itself; the first multi-test file (this one) accumulated DOM across cases and surfaced the issue as "multiple Convert buttons" false-positives. One-line setup change is the canonical fix.
+- **UX:** state machine `idle → picked → running → done` with an `error` arm that preserves the picked file so the user can retry without re-picking. Esc returns to dashboard from any state (keydown handler on `window`). DPI clamped 72–600 in the input element; default 150. Format radio defaults to PNG. Per-page progress text is `page N / total`. "Open output folder" wires through `revealItemInDir`. **Inline error banner** (`role="alert"`) replaces the planned toast — toast would have required adding `sonner` or similar; banner has the same observability properties (test still checks message visibility) and keeps the new-dep blast radius minimal. Revisit if multiple tools end up wanting global toasts.
+- **Tests (`PdfToImages.test.tsx`, 5 — Testing Library + jsdom, `@/lib/*` mocked via `vi.hoisted`):** defaults to PNG + DPI 150 once a file is picked; selecting JPEG + DPI 300 forwards to `convertPdfToImages` with those args + a real `AbortSignal`; mid-job progress events render as `page N / total` in the page counter and the "Open output folder" button appears on resolve; an error envelope rejection renders `kind` + `message` in the alert; clicking Cancel during a running job flips the captured `AbortSignal.aborted` to `true`.
 
 ### [ ] C9 — test(e2e): pdf-to-images happy path
 - Playwright spec in `tests/e2e/pdf-to-images.spec.ts`
@@ -120,7 +115,7 @@ The one decision still TBD: **pdfium binary distribution strategy** — resolved
 | C5 | ~4 | — | — | — |
 | C6 | 7 (`run_job` in core) | — | — | — |
 | C7 | — | — | 7 | — |
-| C8 | — | — | ~5 | — |
+| C8 | — | — | 5 | — |
 | C9 | — | — | — | 1 |
 
 Coverage gate to watch: **≥80% line cov on `multitool-core/src/tools/pdf_to_images/convert.rs`** — over-invest in C3's unit tests, since every interesting failure mode lives there.

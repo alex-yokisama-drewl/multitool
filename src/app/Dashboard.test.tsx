@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { Dashboard } from "./Dashboard";
 
 describe("Dashboard", () => {
-  it("renders the empty-state placeholder when no tools are registered", () => {
+  it("renders a tile for every registered tool", () => {
     render(
       <MemoryRouter>
         <Dashboard />
@@ -12,7 +12,7 @@ describe("Dashboard", () => {
     );
 
     expect(
-      screen.getByRole("heading", { name: /no tools yet/i }),
+      screen.getByRole("link", { name: /pdf → images/i }),
     ).toBeInTheDocument();
   });
 });

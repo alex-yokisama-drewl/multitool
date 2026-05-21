@@ -16,7 +16,10 @@ fn init_tracing() {
 pub fn run() {
     init_tracing();
 
-    let builder = tauri::Builder::default().manage(ipc::JobRegistry::default());
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
+        .manage(ipc::JobRegistry::default());
     let builder = tools::register_commands(builder);
 
     if let Err(err) = builder.run(tauri::generate_context!()) {

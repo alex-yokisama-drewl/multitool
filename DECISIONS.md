@@ -4,6 +4,14 @@ Running log of noteworthy choices, caveats, and non-obvious recipes. Newest at t
 
 ---
 
+## 2026-05-22 — Tauri plugin baseline: `dialog` + `opener`, wrapped behind `src/lib/system.ts`
+
+**Why.** PDF→Images C8 needs an OS file picker and an "Open output folder" affordance. A web-style `<input type="file">` is a dead-end in Tauri — the webview hides the OS path for security, so the Rust side never sees the picked file. That leaves `@tauri-apps/plugin-dialog` as effectively the only sane choice for the picker, and `@tauri-apps/plugin-opener` for `revealItemInDir` (the modern Tauri 2 replacement for `plugin-shell`-based reveals). Both are general-purpose infrastructure every future tool will reuse, so swallowing the new-dep cost once here keeps later commits smaller.
+
+**Effect.** Added `tauri-plugin-dialog` and `tauri-plugin-opener` (Rust + JS halves), registered both in `src-tauri/src/lib.rs::run`, and granted `dialog:allow-open` + `opener:allow-reveal-item-in-dir` in `src-tauri/capabilities/default.json` — narrowest permissions that satisfy the two call sites. **All plugin calls go through `src/lib/system.ts`** (`pickPdfFile` + `revealInFolder`) so components remain presentational and Playwright keeps one mock seam at `src/lib/`. Future tools should extend `src/lib/system.ts` rather than importing `@tauri-apps/plugin-*` directly. **Choosing `plugin-opener` over `plugin-shell`:** opener has first-class `revealItemInDir`; shell's `open` doesn't reveal-in-folder cleanly and is being deprecated for this use case in Tauri 2.
+
+---
+
 ## 2026-05-21 — Pdfium is a process-wide singleton
 
 **Why.** pdfium-render guards its native bindings behind a global `OnceCell`: `Pdfium::bind_to_library` returns `PdfiumLibraryBindingsAlreadyInitialized` on any second call, and `Pdfium::new` `assert!`s the same invariant. C3's first attempt called `Pdfium::new` per `convert` invocation and immediately blew up in parallel `cargo test` (the first test won, every other test saw the rebind error). Sharing one instance also avoids re-loading ~5 MB of native code per call.
