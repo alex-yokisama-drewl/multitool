@@ -55,10 +55,12 @@ Until the `v0.1.0-scaffold` tag lands, also check [SCAFFOLD_PLAN.md](SCAFFOLD_PL
 - **Versioning:** SemVer, but capped at `0.x` (see project intent). Tag releases on `master` as `v0.x.y`.
 
 ### Per-PR checklist (run before opening)
-1. `cargo fmt && cargo clippy -- -D warnings && cargo test`
+1. From `src-tauri/`: `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test -p multitool-core --all-targets`
+   - `--workspace` so clippy covers both the shell and `multitool-core`; `-p multitool-core` for `cargo test` because the Tauri shell's test exe fails to launch on the Windows CI runner (SCAFFOLD_PLAN Phase G).
 2. `pnpm lint && pnpm test && pnpm typecheck`
-3. PR description states: what changed, why, how it was tested
-4. CI green before requesting review / self-merging
+3. From the repo root: `pnpm tauri build --no-bundle` — only step that compiles the Tauri shell with `--release`; catches build-only regressions CI would otherwise be the first to see.
+4. PR description states: what changed, why, how it was tested
+5. CI green before requesting review / self-merging
 
 ### Using `gh` for the GitHub loop
 - Open PR: `gh pr create --base master`

@@ -147,9 +147,10 @@ via `dtolnay/rust-toolchain@stable` with rustfmt+clippy components, cached by
 `Swatinem/rust-cache@v2` scoped to `src-tauri -> target`. pnpm 9 via
 `pnpm/action-setup@v4` and Node 20 via `setup-node@v4` with `cache: pnpm`.
 Steps mirror the per-PR checklist in CLAUDE.md: `cargo fmt --check` →
-`cargo clippy --all-targets -- -D warnings` → `cargo test --all-targets` →
-`pnpm lint` → `pnpm typecheck` → `pnpm test` → `pnpm tauri build --no-bundle`
-(verify compilation across platforms without producing installers).
+`cargo clippy --workspace --all-targets -- -D warnings` →
+`cargo test -p multitool-core --all-targets` → `pnpm lint` → `pnpm typecheck`
+→ `pnpm test` → `pnpm tauri build --no-bundle` (verify compilation across
+platforms without producing installers).
 `LEFTHOOK=0` skips hook install in CI; concurrency cancels in-progress PR
 runs on the same ref but lets `master` pushes finish. `release.yml` fires on
 `v*` tag push, uses the same matrix and Linux deps, and delegates to
