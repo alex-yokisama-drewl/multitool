@@ -31,14 +31,18 @@ src-tauri/
 │   ├── lib.rs             # run(), init_tracing()
 │   ├── main.rs            # thin shim around multitool_lib::run()
 │   ├── ipc/               # cancel_job (#[tauri::command])
-│   ├── tools/             # register_commands (generate_handler!)
-│   └── fs/                # path resolution, duplicate handling
+│   ├── tools/             # register_commands + per-tool command shims
+│   └── fs/                # reserved for path resolution that needs Tauri APIs
 └── multitool-core/        # pure-logic rlib (no tauri dep)
     ├── src/
     │   ├── lib.rs
     │   ├── error.rs       # AppError + serialization
-    │   └── ipc.rs         # JobId, JobRegistry
-    └── tests/integration.rs
+    │   ├── ipc.rs         # JobId, JobRegistry
+    │   ├── fs.rs          # unique_path (pure path helpers)
+    │   ├── pdfium.rs      # process-wide pdfium singleton
+    │   └── tools/         # per-tool pure logic (convert / writer / job)
+    ├── build.rs           # downloads + pins the pdfium native binary
+    └── tests/             # cross-crate smoke tests + PDF fixtures
 ```
 
 `multitool-core` exists to honour the "processing logic = pure functions, testable without spinning up Tauri" rule (see §3.1 below and [DECISIONS.md](DECISIONS.md) → "Workspace split"). It also keeps the Tauri runtime out of test-exe build/launch on Windows, which is the proximate reason it was extracted.
@@ -85,7 +89,7 @@ A central `src/tools/registry.ts` imports each tool's metadata and exposes the l
 
 ### 3.4 Error Handling
 
-- All Rust commands return `Result<T, AppError>` with typed variants (`FileNotFound`, `PermissionDenied`, `UnsupportedFormat`, `ProcessingFailed`, `Cancelled`)
+- All Rust commands return `Result<T, AppError>` with typed variants (`FileNotFound`, `PermissionDenied`, `UnsupportedFormat`, `ProcessingFailed`, `Encrypted`, `Cancelled`)
 - `AppError` serializes as `{ kind, message }` so the webview can branch on `kind`
 - UI surfaces errors as non-blocking toasts; retry is offered where applicable
 - No `unwrap()` or `expect()` in non-test Rust code; `clippy::unwrap_used` denied at the crate level (`cfg_attr(not(test), ...)` so unit tests can still use `.unwrap()` freely)
@@ -94,13 +98,14 @@ A central `src/tools/registry.ts` imports each tool's metadata and exposes the l
 
 | Layer                          | Tool                                          | Target                                          |
 | ------------------------------ | --------------------------------------------- | ----------------------------------------------- |
-| Rust processing logic          | `cargo test` (in `multitool-core`) + fixtures | ≥80% line coverage on `tools/*/convert.rs`      |
-| Rust commands (integration)    | `cargo test` with `tauri::test` harness       | All command paths exercised                     |
+| Rust pure logic                | `cargo test -p multitool-core` + fixtures     | ≥80% line coverage on `tools/*/convert.rs`      |
 | TS units (registry, utils)     | Vitest                                        | Critical paths covered                          |
 | React components               | Vitest + Testing Library                      | Each tool's UI smoke-tested                     |
 | End-to-end                     | Playwright against `pnpm dev`                 | Two flows: PDF→images, images→PDF, happy path  |
 
-Processing functions are written as pure functions (`fn(input: &[u8], opts: &Opts) -> Result<Vec<u8>>`) so they can be tested without spinning up Tauri. Coverage runs via `cargo-llvm-cov` (works on all three CI OSes; tarpaulin is Linux-only).
+Processing functions are written as pure functions so they can be tested without spinning up Tauri. Coverage runs via `cargo-llvm-cov` (works on all three CI OSes; tarpaulin is Linux-only).
+
+The Tauri shell crate has no dedicated test lane. CI and lefthook both run `cargo test -p multitool-core --all-targets`, which deliberately excludes the shell — the shell's test exe doesn't launch on the Windows CI runner (see [DECISIONS.md](DECISIONS.md) → "Workspace split"). Shell modules are kept thin enough (orchestration delegates into `multitool-core`; presentational logic lives in React) that the IPC contract is covered by the Vitest wrapper tests at the `src/lib/` boundary and the Playwright happy-path lane.
 
 Playwright drives the Vite dev server with the Tauri IPC layer mocked at the `src/lib/` wrapper boundary. Tauri's own WebDriver path (`tauri-driver`) is WebdriverIO-only and can be added as a second e2e lane later if needed.
 

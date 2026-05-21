@@ -11,6 +11,23 @@ name = "multitool_core"
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
 tokio-util = "0.7"
+# Pinned: pdfium-render 0.9.1's default features include `pdfium_7763`, so we
+# pin the native binary download to bblanchon's `chromium/7763` release in
+# `build.rs`. Bumping one without the other is a footgun — keep them in lockstep.
+pdfium-render = "0.9"
+# `image` arrives transitively via pdfium-render's `image_025` default feature.
+# Declared here too so convert.rs (C3) can use `image` types without leaning on
+# pdfium-render's re-exports.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
+[build-dependencies]
+# Build script downloads + extracts the platform-matched pdfium binary from
+# bblanchon/pdfium-binaries. Keep this set small — these compile on every
+# fresh `cargo check`.
+ureq = "2"
+flate2 = "1"
+tar = "0.4"
 
 [dev-dependencies]
 serde_json = "1"
+tempfile = "3"

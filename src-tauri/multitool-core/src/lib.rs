@@ -7,6 +7,9 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
 pub mod error;
+pub mod fs;
 pub mod ipc;
+pub mod pdfium;
+pub mod tools;
 
 pub use error::{AppError, AppResult};

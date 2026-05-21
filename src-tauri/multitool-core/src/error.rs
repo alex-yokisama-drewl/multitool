@@ -1,7 +1,7 @@
 use serde::{ser::SerializeStruct, Serialize, Serializer};
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Clone, Debug, Error)]
 pub enum AppError {
     #[error("file not found: {path}")]
     FileNotFound { path: String },
@@ -15,6 +15,9 @@ pub enum AppError {
     #[error("processing failed: {detail}")]
     ProcessingFailed { detail: String },
 
+    #[error("password-protected PDF; password entry is not supported in Phase 1")]
+    Encrypted,
+
     #[error("operation cancelled")]
     Cancelled,
 }
@@ -26,6 +29,7 @@ impl AppError {
             Self::PermissionDenied { .. } => "PermissionDenied",
             Self::UnsupportedFormat { .. } => "UnsupportedFormat",
             Self::ProcessingFailed { .. } => "ProcessingFailed",
+            Self::Encrypted => "Encrypted",
             Self::Cancelled => "Cancelled",
         }
     }
@@ -64,5 +68,16 @@ mod tests {
         let json = serde_json::to_value(&err).unwrap();
         assert_eq!(json["kind"], "Cancelled");
         assert_eq!(json["message"], "operation cancelled");
+    }
+
+    #[test]
+    fn encrypted_has_no_payload_and_explains_phase_1_limit() {
+        let err = AppError::Encrypted;
+        let json = serde_json::to_value(&err).unwrap();
+        assert_eq!(json["kind"], "Encrypted");
+        assert_eq!(
+            json["message"],
+            "password-protected PDF; password entry is not supported in Phase 1"
+        );
     }
 }
