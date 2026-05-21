@@ -8,6 +8,8 @@ This file is loaded automatically into every Claude Code session in this repo. I
 
 Read [SPEC.md](SPEC.md) at the start of any non-trivial task. If a request conflicts with the spec, surface the conflict rather than silently picking one — the spec changes through discussion, not drift.
 
+Until the `v0.1.0-scaffold` tag lands, also check [SCAFFOLD_PLAN.md](SCAFFOLD_PLAN.md) — it sequences the toolchain/CI/test-harness work that has to be in place before any feature code is written. Once the scaffold tag exists, that doc is historical and can be ignored.
+
 ## Tech stack (summary; see SPEC §4 for full rationale)
 
 - **Shell:** Tauri 2.x
