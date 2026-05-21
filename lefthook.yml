@@ -20,7 +20,7 @@ pre-commit:
     - name: rust-clippy
       glob: "src-tauri/**/*.rs"
       root: src-tauri/
-      run: cargo clippy --all-targets -- -D warnings
+      run: cargo clippy --workspace --all-targets -- -D warnings
 
     - name: eslint
       glob: "*.{js,jsx,mjs,cjs,ts,tsx}"
