@@ -30,3 +30,4 @@ tar = "0.4"
 
 [dev-dependencies]
 serde_json = "1"
+tempfile = "3"

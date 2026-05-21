@@ -43,17 +43,13 @@ The one decision still TBD: **pdfium binary distribution strategy** — resolved
 - **Pdfium singleton:** `pdfium::instance()` (OnceLock + Mutex) replaces the per-call `bind_to_library`; rationale + future-tool guidance recorded in [../../DECISIONS.md](../../DECISIONS.md) → "Pdfium is a process-wide singleton".
 - **Tests:** 11 unit tests in `convert.rs` covering PNG/JPEG magic, DPI scaling, encrypted/corrupt/zero-page errors, cancellation (before any page + between pages), `on_page` Err propagation, DPI clamp at both bounds. `cargo llvm-cov` reports **90.54% line coverage** on `convert.rs`.
 
-### [ ] C4 — feat(core): unique_path helper for duplicate-name policy
-- Module: `multitool-core/src/fs.rs`
-- API: `pub fn unique_path(target: &Path) -> std::io::Result<PathBuf>` — returns the input as-is if free; otherwise appends ` (1)`, ` (2)`, … to the stem (files) or full name (dirs). Implements the policy from [../../ARCHITECTURE.md §3.3](../../ARCHITECTURE.md#33-file-io-conventions).
-- Single-threaded use only — document that fact; not race-safe by design.
-- **Tests (tempdir):**
-  - Target doesn't exist → returns unchanged
-  - File exists → returns `name (1).ext`
-  - File + `name (1).ext` both exist → returns `name (2).ext`
-  - Directory exists → returns `name (1)/`
-  - Stem with multiple dots (`foo.tar.gz`) → suffix lands before `.gz`? Decide + test.
-  - No extension (`Makefile`) → suffix appended to full name
+### [x] C4 — feat(core): unique_path helper for duplicate-name policy
+- Module: `multitool-core/src/fs.rs`; `pub fn unique_path(target: &Path) -> std::io::Result<PathBuf>` registered in `lib.rs`.
+- **File-vs-dir branch** keyed off `Path::extension()`: extension present → suffix goes before the extension (`file_stem` is the base); no extension → suffix appended to the full `file_name`. Treats directories and extensionless files identically — both append-to-full-name — which keeps the policy declarative without a stat call.
+- **Multi-dot stems** (`foo.tar.gz`): suffix lands before the final `.gz` (→ `foo.tar (1).gz`) because `Path::extension()` only returns the trailing segment. Matches Finder / Windows Explorer; rationale recorded as an inline comment in the test.
+- **Not race-safe** — documented on the fn; single-threaded use only.
+- `tempfile = "3"` added to `[dev-dependencies]` for the tests.
+- **Tests:** all 6 from the plan land in `fs.rs::tests` (free target, file collision, double collision, directory collision, multi-dot stem, no-extension). All pass; clippy clean with `unwrap_used`/`expect_used` denial intact (only the unwrap-allowed test block uses `.unwrap()`).
 
 ### [ ] C5 — feat(core): pdf-pages output writer
 - Module: `multitool-core/src/tools/pdf_to_images/writer.rs`
