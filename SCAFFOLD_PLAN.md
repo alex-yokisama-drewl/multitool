@@ -145,7 +145,9 @@ appindicator3, librsvg2, libxdo, libssl, build-essential, curl/wget/file);
 the dev-box note in Phase A about webkit2gtk-4.1 carried over verbatim. Rust
 via `dtolnay/rust-toolchain@stable` with rustfmt+clippy components, cached by
 `Swatinem/rust-cache@v2` scoped to `src-tauri -> target`. pnpm 9 via
-`pnpm/action-setup@v4` and Node 20 via `setup-node@v4` with `cache: pnpm`.
+`pnpm/action-setup@v6` and Node 20 via `setup-node@v6` with `cache: pnpm`
+(bumped from `@v4` to drop the GitHub-Actions Node-20 runtime deprecation
+warning ahead of the 2026-06-02 force-upgrade to Node 24).
 Steps mirror the per-PR checklist in CLAUDE.md: `cargo fmt --check` →
 `cargo clippy --workspace --all-targets -- -D warnings` →
 `cargo test -p multitool-core --all-targets` → `pnpm lint` → `pnpm typecheck`
