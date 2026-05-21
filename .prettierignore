@@ -1,0 +1,7 @@
+dist
+node_modules
+src-tauri
+pnpm-lock.yaml
+
+# Markdown docs are author-owned; prettier reflow can hurt readability.
+*.md
