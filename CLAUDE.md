@@ -12,8 +12,8 @@ This file is loaded automatically into every Claude Code session in this repo. I
 - [ARCHITECTURE.md](ARCHITECTURE.md) — tech stack, patterns (tool registry, process model, IPC, error handling), testing approach, file conventions. Read alongside ASSIGNMENT for non-trivial tasks.
 - [DECISIONS.md](DECISIONS.md) — running log of noteworthy choices, caveats, recipes. Check when something looks weird; it's probably explained there.
 - [CHANGELOG.md](CHANGELOG.md) — per-release notes (generated from conventional commits via `git-cliff`).
-- [docs/adding-a-tool.md](docs/adding-a-tool.md) — playbook for adding a new tool to the registry. Read before starting any tool. (Currently a thin draft; revise after PDF→Images ships.)
-- [docs/tools/](docs/tools/) — per-tool implementation briefs (inputs, options, output, edge cases, acceptance). One file per tool.
+- [docs/adding-a-tool.md](docs/adding-a-tool.md) — playbook for adding a new tool to the registry. Read before starting any tool.
+- [docs/tools/](docs/tools/) — **ephemeral per-tool working docs only** (assignment brief + optional build plan, both deleted when the tool ships). No persistent per-tool documentation — tools should be self-describing in code.
 
 If a request conflicts with ASSIGNMENT or ARCHITECTURE, surface the conflict rather than silently picking one — those docs change through discussion, not drift.
 

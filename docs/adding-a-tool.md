@@ -4,7 +4,7 @@
 
 ## When to read this
 
-Read this when adding a new tool to the registry. For a single tool, also read its per-tool brief in `docs/tools/<tool-id>.md` (write one first if it doesn't exist — template at the bottom).
+Read this when adding a new tool to the registry. At the start of a non-trivial tool, write an **ephemeral assignment brief** at `docs/tools/<tool-id>.md` (template at the bottom). The brief and any companion plan doc are deleted once the tool ships — tools are meant to be self-describing in code.
 
 ## What "adding a tool" should look like
 
@@ -12,9 +12,9 @@ A new tool is meant to be **two new folders + two import lines + tests**, with n
 
 ## Steps
 
-### 1. Read the per-tool brief, plan the build out
+### 1. Write the assignment brief, plan the build out
 
-- `docs/tools/<tool-id>.md` — inputs, options, output naming, edge cases, acceptance. If missing, write it first using the template at the bottom.
+- `docs/tools/<tool-id>.md` — ephemeral assignment brief: inputs, options, output naming, edge cases, acceptance. Use the template at the bottom. **Deleted when the tool ships.**
 - Optional but recommended for non-trivial tools: a `docs/tools/<tool-id>-plan.md` ephemeral working doc that tracks per-commit progress (the model PDF→Images used). Pays for itself the moment a session hands off mid-build; delete once the tool ships. Architectural choices that emerge mid-build go to [../DECISIONS.md](../DECISIONS.md), not the plan file.
 
 ### 2. Create the Rust modules
@@ -109,7 +109,7 @@ When a tool needs something not in this list, decide: (a) one-off inside the too
 
 ## Per-tool brief template
 
-Save as `docs/tools/<tool-id>.md`. Keep it short and implementation-flavored — the PM-level scope still lives in [../ASSIGNMENT.md](../ASSIGNMENT.md).
+Save as `docs/tools/<tool-id>.md`. Ephemeral — delete once the tool ships. Keep it short and implementation-flavored; the PM-level scope still lives in [../ASSIGNMENT.md](../ASSIGNMENT.md).
 
 ```markdown
 # Tool: <Name>
