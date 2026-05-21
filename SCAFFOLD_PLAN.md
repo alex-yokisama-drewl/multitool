@@ -130,16 +130,35 @@ peer, expect the same diagnostic and the same fix.
 
 ---
 
-## Phase G — CI
+## Phase G — CI — DONE in `ci: add cross-platform pipeline and release workflow`
 
-GitHub Actions workflows under `.github/workflows/`:
+`.github/workflows/ci.yml` runs on PR and push-to-`master` across a
+`ubuntu-latest` / `macos-latest` / `windows-latest` matrix with
+`fail-fast: false` so all three OSes report independently. Linux installs the
+full Tauri 2 system-deps list (webkit2gtk-4.1, libsoup-3.0, ayatana
+appindicator3, librsvg2, libxdo, libssl, build-essential, curl/wget/file);
+the dev-box note in Phase A about webkit2gtk-4.1 carried over verbatim. Rust
+via `dtolnay/rust-toolchain@stable` with rustfmt+clippy components, cached by
+`Swatinem/rust-cache@v2` scoped to `src-tauri -> target`. pnpm 9 via
+`pnpm/action-setup@v4` and Node 20 via `setup-node@v4` with `cache: pnpm`.
+Steps mirror the per-PR checklist in CLAUDE.md: `cargo fmt --check` →
+`cargo clippy --all-targets -- -D warnings` → `cargo test --all-targets` →
+`pnpm lint` → `pnpm typecheck` → `pnpm test` → `pnpm tauri build --no-bundle`
+(verify compilation across platforms without producing installers).
+`LEFTHOOK=0` skips hook install in CI; concurrency cancels in-progress PR
+runs on the same ref but lets `master` pushes finish. `release.yml` fires on
+`v*` tag push, uses the same matrix and Linux deps, and delegates to
+`tauri-apps/tauri-action@v0` which builds per-platform bundles and attaches
+them to a **draft** GitHub Release (`releaseDraft: true`) so artifacts can be
+inspected before publishing. Tags containing `-` (e.g. `v0.1.0-scaffold`)
+are auto-marked prerelease. No macOS signing/notarization env wired up, per
+CLAUDE.md.
 
-1. `ci.yml` — runs on PR + push to `master`:
-   - matrix: `ubuntu-latest`, `windows-latest`, `macos-latest`
-   - steps: install toolchains (cache `~/.cargo`, `~/.pnpm-store`, `target/`), `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test`, `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm tauri build` (verify only; don't upload).
-2. `release.yml` — on `v*` tag push: build per-platform artifacts, attach to GitHub Release. **No** macOS signing/notarization (CLAUDE.md rule).
-3. Branch protection for `master`: require CI green + linear history.
-4. **Checkpoint commit:** `ci: add cross-platform pipeline and release workflow`
+**Manual follow-up (not committable):** in GitHub repo settings, enable
+branch protection on `master` requiring the three CI jobs (`linux` / `macos`
+/ `windows`) to pass and require linear history. The Definition-of-done
+"CI passes on all three OSes for a no-op PR" check also has to happen on the
+GitHub side once the workflows land on a branch.
 
 ---
 
