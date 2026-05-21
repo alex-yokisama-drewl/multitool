@@ -7,7 +7,8 @@ edition = "2021"
 
 [lib]
 name = "multitool_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# Desktop-only (SPEC §2). `cdylib`/`staticlib` are for mobile; cdylib also breaks `cargo test` on Windows.
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

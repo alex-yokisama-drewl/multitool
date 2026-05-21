@@ -154,6 +154,16 @@ inspected before publishing. Tags containing `-` (e.g. `v0.1.0-scaffold`)
 are auto-marked prerelease. No macOS signing/notarization env wired up, per
 CLAUDE.md.
 
+**Windows fix that landed alongside the workflows:** the create-tauri-app
+template ships `crate-type = ["staticlib", "cdylib", "rlib"]` (staticlib =
+iOS, cdylib = Android). With `cdylib` enabled, `cargo test` on Windows
+fails to launch the unit-test exe with `STATUS_ENTRYPOINT_NOT_FOUND`
+(0xc0000139) because the test binary and the cdylib's import library
+disagree on exported symbols. SPEC §2 scopes us to desktop only, so
+`src-tauri/Cargo.toml` was pared down to `crate-type = ["rlib"]`. If mobile
+ever lands the two entries come back; the `#[cfg_attr(mobile, ...)]` entry
+point in `lib.rs` already no-ops on desktop and stays put as a marker.
+
 **Manual follow-up (not committable):** in GitHub repo settings, enable
 branch protection on `master` requiring the three CI jobs (`linux` / `macos`
 / `windows`) to pass and require linear history. The Definition-of-done
