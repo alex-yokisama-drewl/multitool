@@ -35,8 +35,6 @@ Cross-platform desktop application providing an offline, all-in-one alternative 
 
 ### 5.1 Tool: PDF → Images
 
-> Implementation brief: [docs/tools/pdf-to-images.md](docs/tools/pdf-to-images.md).
-
 - **Input:** one PDF file (via picker or drag-and-drop)
 - **Output:** one image per page, in a subfolder named `{pdf_stem}_pages/`, in the input directory
 - **Options:** output format (PNG default, JPEG), DPI (default 150)
@@ -64,7 +62,15 @@ The project intentionally stays in the `0.x` pre-release range. There is no plan
 | **0.2.0**  | Drag-and-drop input on dashboard/tools, output-location override UI, dashboard tile redesign (square tiles, per-tool color set at registration, category-grouped sections with separator + label) |
 | **0.3.0+** | Additional tools (image format conversion, audio trim, ...) — each as a new module under the registry                                                  |
 
-## 7. Open Questions
+## 7. Nice-to-haves & follow-ups
+
+Not committed to a milestone; record so they don't get lost.
+
+- **Paste-from-clipboard for image inputs.** Any tool that accepts images should allow pasting (Ctrl/Cmd+V) directly — screenshots in particular. Likely a shared input affordance rather than per-tool.
+- **Image format converter.** A future tool to convert between image formats. Details TBD when it gets built.
+- **Doc consolidation.** Once the dashboard redesign settles and the only foreseeable future work is adding tools, fold [DECISIONS.md](DECISIONS.md) into [ARCHITECTURE.md](ARCHITECTURE.md) as a single technical doc.
+
+## 8. Open Questions
 
 1. **App icon & branding** — placeholder is acceptable; not blocking any milestone
 2. **Auto-updates** — not planned (no distribution channel); can revisit if intent changes
