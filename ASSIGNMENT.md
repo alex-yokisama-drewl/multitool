@@ -35,6 +35,8 @@ Cross-platform desktop application providing an offline, all-in-one alternative 
 
 ### 5.1 Tool: PDF → Images
 
+> Implementation brief: [docs/tools/pdf-to-images.md](docs/tools/pdf-to-images.md).
+
 - **Input:** one PDF file (via picker or drag-and-drop)
 - **Output:** one image per page, in a subfolder named `{pdf_stem}_pages/`, in the input directory
 - **Options:** output format (PNG default, JPEG), DPI (default 150)
