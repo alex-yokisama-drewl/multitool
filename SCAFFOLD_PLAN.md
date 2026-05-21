@@ -100,12 +100,33 @@ changelog (no devDep; install `git-cliff` ad-hoc when cutting a release).
 
 ---
 
-## Phase F — Test harnesses (no real tests yet, just plumbing)
+## Phase F — Test harnesses — DONE in `chore: add test harnesses (vitest, playwright, coverage)`
 
-1. **Vitest** + **@testing-library/react** + jsdom env. One trivial passing test to prove wiring.
-2. **Playwright** with a Tauri-aware launcher (or `webdriver`-based driver). One placeholder spec that opens the app shell and asserts the dashboard title — marked `.skip` until the first tool exists.
-3. Rust: a `tests/` integration dir + a `#[cfg(test)]` smoke test in `tools/mod.rs`. Confirm `cargo tarpaulin` or `cargo llvm-cov` runs (we need coverage measurement for the ≥80% target in SPEC §8.1).
-4. **Checkpoint commit:** `chore: add test harnesses (vitest, playwright, coverage)`
+Vitest + jsdom + `@testing-library/react` wired via `test:` block in
+`vite.config.ts` (config consolidated rather than split into a separate
+`vitest.config.ts`). One smoke test in `src/app/Dashboard.test.tsx` asserts
+the registry-empty state renders. `tests/setup.ts` pulls in
+`@testing-library/jest-dom/vitest`; `src/vite-env.d.ts` carries the
+`@testing-library/jest-dom` type reference so `toBeInTheDocument` is visible
+to `tsc`. Playwright drives the Vite dev server via `playwright.config.ts`;
+the one e2e spec under `tests/e2e/dashboard.spec.ts` is `test.skip`'d until
+the first tool ships. `pnpm test` / `test:watch` / `test:coverage` /
+`test:e2e` scripts added. `cargo-llvm-cov` installed and verified
+(`cargo llvm-cov --summary-only` succeeds; coverage on `error.rs` / `ipc/`
+/ `tools/` is already at 86–100% line cover before any feature work).
+`src-tauri/tests/integration.rs` exercises `multitool_lib` from outside the
+crate; `tools::tests::register_commands_returns_a_usable_builder` is the
+in-crate smoke test that catches `generate_handler!` typos at compile time.
+Lefthook pre-push now also runs `pnpm test`.
+
+**pnpm gotcha (resolved):** vitest's transitive `vite` peer-resolution
+created a second `vite` graph (no `@types/node` peer) while the project's
+own `vite` carried `@types/node`. TypeScript then saw two `Plugin` types
+and refused to assign `react()` / `tailwindcss()` to the config's
+`plugins`. Fixed with `pnpm.packageExtensions` in `package.json` (adds
+`@types/node` to vitest's peer set), which collapses the graph to a single
+vite resolution. If a future devDep reintroduces a no-`@types/node` vite
+peer, expect the same diagnostic and the same fix.
 
 ---
 

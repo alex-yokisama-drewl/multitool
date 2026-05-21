@@ -39,4 +39,6 @@ pre-push:
     - name: rust-tests
       root: src-tauri/
       run: cargo test
-    # Frontend (Vitest) tests join here in Phase F.
+
+    - name: frontend-tests
+      run: pnpm test
