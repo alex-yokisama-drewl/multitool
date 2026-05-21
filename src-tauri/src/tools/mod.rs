@@ -6,7 +6,7 @@
 //!      `generate_handler!` invocation in [`register_commands`].
 //!
 //! No other file should change to add a tool — that is the contract that
-//! keeps the modular architecture from SPEC §5.1 honest. The `generate_handler!`
+//! keeps the modular architecture from ARCHITECTURE §3.1 honest. The `generate_handler!`
 //! macro is checked at compile time, so a misspelled command path or a
 //! `#[tauri::command]` signature that drifted will fail `cargo build` /
 //! `cargo clippy` before any UI loads.
