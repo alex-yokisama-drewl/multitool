@@ -72,17 +72,15 @@ The one decision still TBD: **pdfium binary distribution strategy** — resolved
   - `tool:error` → `{ job_id, error: AppError }` (relies on the `{ kind, message }` serde impl from C2)
 - **Test-lane divergence (plan shift):** dropped the planned `tauri::test` tests in favor of seven core unit tests on `run_job`. **Why:** both CI and lefthook run `cargo test -p multitool-core --all-targets` (Windows getrandom blocker — `DECISIONS.md` → "Workspace split"), so `tauri::test` cases in the shell crate wouldn't gate anything. The seven core tests cover the plan's three required behaviours (happy path with in-order progress + correct files, cancellation mid-run leaves partial output, missing input → `FileNotFound`) plus encrypted-PDF, output-dir collision via `unique_path`, `on_progress`-error propagation, and a `derive_output_dir` unit. The IPC-event contract is verified at the C7 boundary via the Vitest wrapper tests; the Playwright happy-path in C9 closes the end-to-end loop.
 
-### [ ] C7 — feat(lib): IPC wrapper for pdf-to-images
+### [x] C7 — feat(lib): IPC wrapper for pdf-to-images
 **Sets the pattern future IPC wrappers will copy.**
-- Module: `src/lib/tools/pdfToImages.ts`
-- API: `async function convertPdfToImages(path: string, opts: Opts, { onProgress, signal }: Hooks): Promise<JobResult>`
-- Subscribes to `tool:progress` events filtered by JobId; on `AbortSignal` abort calls the `cancel_job` command; on `tool:complete` resolves; on `tool:error` rejects with the typed envelope
-- **Tests (Vitest with `@tauri-apps/api` mocked):**
-  - Invokes `convert_pdf_to_images` with `{ path, opts }`
-  - `onProgress` callback fires for progress events
-  - Subscriptions unsubscribed on completion (no leaks)
-  - `signal.abort()` → calls `cancel_job` with the JobId
-  - Error envelope → rejected promise with typed `{ kind, message }`
+- Module: `src/lib/tools/pdfToImages.ts`; public surface is `convertPdfToImages`, `Opts`, `Format`, `JobResult`, `Progress`, `AppErrorEnvelope`, `ConvertHooks`.
+- **API shape (decided):** `async function convertPdfToImages(path: string, opts: Opts, { onProgress, signal }?: ConvertHooks): Promise<JobResult>`. JobId is generated internally (`crypto.randomUUID()`) — callers never see it.
+- **Plan shift:** the plan called out resolving on `tool:complete` and rejecting on `tool:error`. In practice the C6 Tauri command also returns `Result<JobResult, AppError>` directly via `invoke`, so the invoke promise *is* the same signal — earlier than the events even (events are emitted just before the command returns, but they ride the same join). Wrapper relies on the invoke promise for completion/error and uses `tool:progress` only for streaming. The complete/error events stay live on the Rust side for any future multi-listener consumers.
+- **JobResult fields** kept in Rust snake_case (`output_dir`, `page_count`, `duration_ms`) — exact mirror of `multitool_core::tools::pdf_to_images::JobResult`'s serde output. Renaming costs a sync point at every Rust edit for marginal TS ergonomics; the C8 component reads three fields once.
+- **AbortSignal contract:** `signal?.throwIfAborted()` at entry rejects synchronously on already-aborted signals (no invoke, no listen). Mid-run aborts go through `addEventListener("abort", …, { once: true })` and call `cancel_job` with the JobId — `convert_pdf_to_images` then rejects with `AppError::Cancelled`, which propagates as the wrapper's rejection.
+- **Cleanup is finally-blocked:** the `listen` unsubscribe and the abort-listener `removeEventListener` always run, even when invoke rejects — no leaks on the error path.
+- **Tests (`pdfToImages.test.ts`, 7 total — `@tauri-apps/api/{core,event}` mocked via `vi.hoisted`):** invoke args (`path`+`opts`); progress events filtered by JobId (a fake "other-job" event is ignored, the real two are forwarded in order); unlisten fires on success; unlisten fires on error; mid-run abort calls `cancel_job` with the captured JobId; arbitrary error envelope round-trips; already-aborted signal short-circuits before invoke/listen.
 
 ### [ ] C8 — feat(tools): pdf-to-images frontend module
 - Folder: `src/tools/pdf-to-images/`
@@ -121,7 +119,7 @@ The one decision still TBD: **pdfium binary distribution strategy** — resolved
 | C4 | ~6 | — | — | — |
 | C5 | ~4 | — | — | — |
 | C6 | 7 (`run_job` in core) | — | — | — |
-| C7 | — | — | ~5 | — |
+| C7 | — | — | 7 | — |
 | C8 | — | — | ~5 | — |
 | C9 | — | — | — | 1 |
 
