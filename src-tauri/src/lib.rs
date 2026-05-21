@@ -1,11 +1,8 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
-mod error;
 pub mod fs;
 pub mod ipc;
 pub mod tools;
-
-pub use error::{AppError, AppResult};
 
 fn init_tracing() {
     use tracing_subscriber::{fmt, EnvFilter};

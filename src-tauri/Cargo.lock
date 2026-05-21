@@ -1792,15 +1792,23 @@ dependencies = [
 name = "multitool"
 version = "0.1.0"
 dependencies = [
+ "multitool-core",
  "serde",
- "serde_json",
  "tauri",
  "tauri-build",
- "thiserror 2.0.18",
  "tokio",
- "tokio-util",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "multitool-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio-util",
 ]
 
 [[package]]

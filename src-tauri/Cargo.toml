@@ -1,3 +1,14 @@
+[workspace]
+members = [".", "multitool-core"]
+# `cargo test` defaults to multitool-core only: the Tauri shell's test exe
+# can't be launched on Windows (transitively imports getrandom 0.3's
+# ProcessPrng from bcryptprimitives.dll, which fails to resolve in the
+# Server 2025 runner image with STATUS_ENTRYPOINT_NOT_FOUND). All testable
+# logic lives in multitool-core, so the shell only needs compile-time
+# checks (cargo build / clippy), not test-exe execution. Pass `--workspace`
+# explicitly if you want to test the shell too on Linux/macOS.
+default-members = ["multitool-core"]
+
 [package]
 name = "multitool"
 version = "0.1.0"
@@ -7,18 +18,18 @@ edition = "2021"
 
 [lib]
 name = "multitool_lib"
-# Desktop-only (SPEC §2). `cdylib`/`staticlib` are for mobile; cdylib also breaks `cargo test` on Windows.
+# Desktop-only (SPEC §2). `cdylib`/`staticlib` are for mobile.
 crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+multitool-core = { path = "multitool-core" }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-thiserror = "2"
+# `tokio` and `tracing` are Phase-D baseline deps for future tool commands;
+# nothing in this crate uses them directly yet.
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
-tokio-util = "0.7"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

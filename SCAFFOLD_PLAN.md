@@ -80,6 +80,11 @@ command and gives `generate_handler!` a non-empty list. `lib.rs` wires
 registry. Crate-level lints are gated with `cfg_attr(not(test), ...)` so unit
 tests in `error.rs` / `ipc/mod.rs` can use `.unwrap()` freely.
 
+> **Superseded by Phase G's workspace split:** `AppError`, `JobId`, and
+> `JobRegistry` were moved into a new `multitool-core` rlib at
+> `src-tauri/multitool-core/` to dodge a Windows test-exe launch failure.
+> The Tauri shell keeps only `cancel_job` / `register_commands` / `run()`.
+
 ---
 
 ## Phase E — Quality tooling — DONE in `chore: add lefthook hooks and changelog config`
@@ -154,15 +159,37 @@ inspected before publishing. Tags containing `-` (e.g. `v0.1.0-scaffold`)
 are auto-marked prerelease. No macOS signing/notarization env wired up, per
 CLAUDE.md.
 
-**Windows fix that landed alongside the workflows:** the create-tauri-app
-template ships `crate-type = ["staticlib", "cdylib", "rlib"]` (staticlib =
-iOS, cdylib = Android). With `cdylib` enabled, `cargo test` on Windows
-fails to launch the unit-test exe with `STATUS_ENTRYPOINT_NOT_FOUND`
-(0xc0000139) because the test binary and the cdylib's import library
-disagree on exported symbols. SPEC §2 scopes us to desktop only, so
-`src-tauri/Cargo.toml` was pared down to `crate-type = ["rlib"]`. If mobile
-ever lands the two entries come back; the `#[cfg_attr(mobile, ...)]` entry
-point in `lib.rs` already no-ops on desktop and stays put as a marker.
+**Windows fix that landed alongside the workflows — workspace split.** The
+first CI run revealed that `cargo test` on Windows fails to launch the
+Tauri-shell test exe with `STATUS_ENTRYPOINT_NOT_FOUND` (0xc0000139).
+`dumpbin /IMPORTS` traced this to `ProcessPrng` in `bcryptprimitives.dll`,
+imported transitively via `tauri → getrandom 0.3.4`. The symbol fails to
+resolve at exe-launch time on the Server 2025 runner image even though
+Microsoft documents it as available there. Two intermediate hypotheses
+(dropping `cdylib`/`staticlib` from `crate-type`, then verifying the OS
+image via dumpbin) ruled out the obvious culprits and confirmed the
+import-resolution failure is intrinsic to anything that links the Tauri
+runtime — including a zero-test launch of a test exe.
+
+The fix realigns the crate layout with SPEC §5.1 ("pure functions, testable
+without spinning up Tauri"): a workspace at `src-tauri/Cargo.toml` with
+`default-members = ["multitool-core"]` and a new `multitool-core` rlib that
+holds `AppError`, `JobId`, and `JobRegistry` (plus all of their tests,
+including the integration smoke that previously lived in
+`src-tauri/tests/`). The Tauri shell at `src-tauri/` depends on
+`multitool-core` and keeps the bits that genuinely need `tauri` —
+`cancel_job` (`#[tauri::command]`), `register_commands`, and `run()`. The
+shell has no runtime tests anymore; correctness there is enforced by
+`cargo build` / `cargo clippy --workspace` (the `generate_handler!` macro
+fails to compile on a misspelled command path). `cargo test` from
+`src-tauri/` defaults to `multitool-core` only, so the failing
+Tauri-runtime test exe is never built or launched. Pass `--workspace`
+explicitly on Linux/macOS if you want the shell's targets included.
+
+Also adjusted: `src-tauri/Cargo.toml` dropped `serde_json`, `thiserror`, and
+`tokio-util` (those moved to `multitool-core`); `tokio` and `tracing` stay
+as Phase-D baseline deps for future tool commands. `crate-type = ["rlib"]`
+(desktop-only) stays.
 
 **Manual follow-up (not committable):** in GitHub repo settings, enable
 branch protection on `master` requiring the three CI jobs (`linux` / `macos`

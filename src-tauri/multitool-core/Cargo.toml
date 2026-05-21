@@ -1,0 +1,16 @@
+[package]
+name = "multitool-core"
+version = "0.1.0"
+edition = "2021"
+description = "Pure-logic crate for multitool: types and helpers that don't depend on Tauri."
+
+[lib]
+name = "multitool_core"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+tokio-util = "0.7"
+
+[dev-dependencies]
+serde_json = "1"
