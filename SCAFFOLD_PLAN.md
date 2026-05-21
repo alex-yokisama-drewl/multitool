@@ -196,11 +196,12 @@ Also adjusted: `src-tauri/Cargo.toml` dropped `serde_json`, `thiserror`, and
 as Phase-D baseline deps for future tool commands. `crate-type = ["rlib"]`
 (desktop-only) stays.
 
-**Manual follow-up (not committable):** in GitHub repo settings, enable
-branch protection on `master` requiring the three CI jobs (`linux` / `macos`
-/ `windows`) to pass and require linear history. The Definition-of-done
-"CI passes on all three OSes for a no-op PR" check also has to happen on the
-GitHub side once the workflows land on a branch.
+**Branch protection (configured).** Classic branch protection on `master`
+requires the three CI jobs (`linux` / `macos` / `windows`) and
+`required_linear_history`. Force-push and branch deletion are blocked.
+`enforce_admins` stays `false` so the owner can bypass when needed —
+acceptable for a solo learning project. The merge of the no-op validation
+PR exercises the gate end-to-end (Phase G Definition-of-done).
 
 ---
 
