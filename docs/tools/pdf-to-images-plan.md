@@ -31,10 +31,10 @@ The one decision still TBD: **pdfium binary distribution strategy** — resolved
 - Smoke test at `multitool-core/tests/pdfium_smoke.rs` opens the fixture and asserts `page_count == 3` — passes locally; CI verifies on linux/macos/windows.
 - **C6 carryover:** runtime path resolution for bundled releases is unsolved — captured in the DECISIONS entry's "Phase-1 gap" paragraph.
 
-### [ ] C2 — feat(core): AppError::Encrypted variant
-- Add `Encrypted` variant to `multitool_core::error::AppError` (no payload)
-- Update serialization mapping + frontend type mirror if applicable
-- **Tests:** serialization round-trip for the new variant; mirrors existing AppError tests.
+### [x] C2 — feat(core): AppError::Encrypted variant
+- `Encrypted` variant (no payload) added to `multitool_core::error::AppError`; `kind()` returns `"Encrypted"`, `Display` explains the Phase-1 limitation.
+- No frontend TS mirror exists yet — added when C7 introduces the IPC wrapper.
+- Serialization round-trip test added alongside existing AppError tests.
 
 ### [ ] C3 — feat(core): pdf-to-images pure conversion
 - Module: `multitool-core/src/tools/pdf_to_images/{mod.rs, convert.rs}`
