@@ -76,7 +76,13 @@ jobs:
 
       - name: cargo test
         working-directory: src-tauri
-        run: cargo test --all-targets
+        # `-p multitool-core` keeps the Tauri shell's test exe out of the
+        # run. On the Windows Server 2025 runner image, the shell's test
+        # exe fails to launch with STATUS_ENTRYPOINT_NOT_FOUND because the
+        # transitive `getrandom 0.3` Windows backend imports `ProcessPrng`
+        # from `bcryptprimitives.dll`, which doesn't resolve at exe-launch
+        # time on that image. All testable logic lives in multitool-core.
+        run: cargo test -p multitool-core --all-targets
 
       - name: pnpm lint
         run: pnpm lint

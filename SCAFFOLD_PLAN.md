@@ -172,19 +172,21 @@ import-resolution failure is intrinsic to anything that links the Tauri
 runtime — including a zero-test launch of a test exe.
 
 The fix realigns the crate layout with SPEC §5.1 ("pure functions, testable
-without spinning up Tauri"): a workspace at `src-tauri/Cargo.toml` with
-`default-members = ["multitool-core"]` and a new `multitool-core` rlib that
-holds `AppError`, `JobId`, and `JobRegistry` (plus all of their tests,
-including the integration smoke that previously lived in
-`src-tauri/tests/`). The Tauri shell at `src-tauri/` depends on
+without spinning up Tauri"): a workspace at `src-tauri/Cargo.toml` and a new
+`multitool-core` rlib that holds `AppError`, `JobId`, and `JobRegistry`
+(plus all of their tests, including the integration smoke that previously
+lived in `src-tauri/tests/`). The Tauri shell at `src-tauri/` depends on
 `multitool-core` and keeps the bits that genuinely need `tauri` —
 `cancel_job` (`#[tauri::command]`), `register_commands`, and `run()`. The
 shell has no runtime tests anymore; correctness there is enforced by
 `cargo build` / `cargo clippy --workspace` (the `generate_handler!` macro
-fails to compile on a misspelled command path). `cargo test` from
-`src-tauri/` defaults to `multitool-core` only, so the failing
-Tauri-runtime test exe is never built or launched. Pass `--workspace`
-explicitly on Linux/macOS if you want the shell's targets included.
+fails to compile on a misspelled command path). No `default-members` is
+declared: `tauri build` invokes `cargo build --bins --features
+tauri/custom-protocol`, and cargo applies the feature flag to the
+selected package, so the default has to be the shell (which has the
+tauri dep). CI and lefthook pass `cargo test -p multitool-core
+--all-targets` explicitly to keep the failing Tauri-runtime test exe
+out of the run.
 
 Also adjusted: `src-tauri/Cargo.toml` dropped `serde_json`, `thiserror`, and
 `tokio-util` (those moved to `multitool-core`); `tokio` and `tracing` stay

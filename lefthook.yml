@@ -38,7 +38,11 @@ pre-push:
   jobs:
     - name: rust-tests
       root: src-tauri/
-      run: cargo test
+      # Pin to multitool-core so the Tauri shell's test exe isn't built /
+      # launched here — it fails on the CI Windows image (see the comment
+      # in src-tauri/Cargo.toml). Linux dev box would succeed, but keeping
+      # the local command identical to CI avoids surprise.
+      run: cargo test -p multitool-core --all-targets
 
     - name: frontend-tests
       run: pnpm test
