@@ -78,6 +78,39 @@ jobs:
         working-directory: src-tauri
         run: cargo test --all-targets
 
+      - name: Windows diagnostic — dumpbin on failing test exe
+        if: failure() && matrix.platform.os == 'windows-latest'
+        working-directory: src-tauri
+        shell: pwsh
+        run: |
+          Write-Host "=== Locating dumpbin.exe ==="
+          $dumpbin = Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -Filter dumpbin.exe -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match "Hostx64\\x64" } |
+            Select-Object -First 1 -ExpandProperty FullName
+          Write-Host "dumpbin: $dumpbin"
+
+          Write-Host ""
+          Write-Host "=== All exes under target\debug\deps\ ==="
+          Get-ChildItem target\debug\deps\*.exe | ForEach-Object { $_.FullName }
+
+          $exe = Get-ChildItem target\debug\deps\multitool_lib-*.exe | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $exe) { Write-Host "no multitool_lib-*.exe found"; exit 0 }
+          Write-Host ""
+          Write-Host "=== /DEPENDENTS for $exe ==="
+          & $dumpbin /DEPENDENTS $exe
+
+          Write-Host ""
+          Write-Host "=== /IMPORTS for $exe (first 400 lines) ==="
+          & $dumpbin /IMPORTS $exe | Select-Object -First 400
+
+          Write-Host ""
+          Write-Host "=== Direct launch (--list) ==="
+          Push-Location target\debug\deps
+          & $exe --list 2>&1
+          Write-Host "ExitCode (decimal): $LASTEXITCODE"
+          Write-Host ("ExitCode (hex): 0x{0:X8}" -f $LASTEXITCODE)
+          Pop-Location
+
       - name: pnpm lint
         run: pnpm lint
 
