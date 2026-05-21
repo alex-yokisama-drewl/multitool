@@ -4,6 +4,10 @@ on:
   pull_request:
   push:
     branches: [master]
+  # On-demand trigger so feature branches can spot-check the cross-OS matrix
+  # without opening a draft PR. Fire via `gh workflow run ci.yml --ref <branch>`
+  # or the Actions tab. See CLAUDE.md → Per-PR checklist for when to use it.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
