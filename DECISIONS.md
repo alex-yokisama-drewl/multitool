@@ -4,6 +4,14 @@ Running log of noteworthy choices, caveats, and non-obvious recipes. Newest at t
 
 ---
 
+## 2026-05-21 — Pdfium is a process-wide singleton
+
+**Why.** pdfium-render guards its native bindings behind a global `OnceCell`: `Pdfium::bind_to_library` returns `PdfiumLibraryBindingsAlreadyInitialized` on any second call, and `Pdfium::new` `assert!`s the same invariant. C3's first attempt called `Pdfium::new` per `convert` invocation and immediately blew up in parallel `cargo test` (the first test won, every other test saw the rebind error). Sharing one instance also avoids re-loading ~5 MB of native code per call.
+
+**Effect.** `multitool_core::pdfium::instance() -> Result<&'static Pdfium, AppError>` is the only path to a `Pdfium`; both `tools/pdf_to_images/convert` and the smoke test go through it. Implementation uses `OnceLock<Pdfium>` for the fast path plus a `Mutex<()>` to serialize the slow path so two threads can't race into a double-bind. Future tools that need pdfium: call `pdfium::instance()` and pass it around; never call `Pdfium::new` directly. If a future tool needs a *different* pdfium configuration, that's a redesign — pdfium can only be configured once per process.
+
+---
+
 ## 2026-05-21 — pdfium binary: dynamic-load via `build.rs` download
 
 **Why.** PDF→Images C1 needed the native pdfium library wired up cross-OS. Static linking via `pdfium-render`'s `static` feature requires libclang + a prebuilt static pdfium per OS, which would blow up CI and saddle every contributor with a Windows toolchain story. Vendoring the binaries grows the repo by ~30 MB across three platforms and turns updates into a manual chore. Requiring contributors to install pdfium system-wide breaks our reproducibility goal for a learning project. Dynamic-load with a build-time download keeps the source tree clean, builds fast, and pins exactly one upstream version.

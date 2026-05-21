@@ -1,24 +1,32 @@
 #!/usr/bin/env python3
-"""Generate minimal hand-rolled PDF fixtures for multitool-core tests.
+"""Generate PDF fixtures for multitool-core tests.
 
-Why this exists: pdfium-render is strict about PDF structure, so the fixtures
-need correct cross-reference table byte offsets. Computing those by hand is
-error-prone; this script does it deterministically. The generated PDFs are
-checked into `src-tauri/multitool-core/tests/fixtures/` — re-run only if the
-fixture set changes.
+Why this exists: pdfium-render is strict about PDF structure, so the basic
+fixtures need correct cross-reference table byte offsets. Computing those by
+hand is error-prone; this script does it deterministically. Encryption is
+delegated to Ghostscript, which is the lowest-friction option that produces
+a real, pdfium-rejected encrypted PDF.
 
 Usage:
     python3 scripts/gen_pdf_fixture.py
 
-Currently emits:
-    src-tauri/multitool-core/tests/fixtures/three-page.pdf
+Emits (re-run only when the fixture set changes):
+    src-tauri/multitool-core/tests/fixtures/three-page.pdf    (3 empty pages)
+    src-tauri/multitool-core/tests/fixtures/single-page.pdf   (1 empty page)
+    src-tauri/multitool-core/tests/fixtures/encrypted.pdf     (single-page + password)
+    src-tauri/multitool-core/tests/fixtures/corrupt.pdf       (truncated header)
 
-Pages are intentionally empty (no /Contents entry); pdfium renders them as
-blank, which is fine for smoke-testing the binding + page-count read path.
+Page objects have no /Contents entry; pdfium renders them as blank, which is
+fine — these fixtures exist to exercise the binding, error paths, and the
+page-iteration loop, not to validate rendering output.
+
+Ghostscript >=9 must be on PATH for the encrypted fixture.
 """
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -65,14 +73,56 @@ def build_pdf(num_pages: int) -> bytes:
     return bytes(body)
 
 
+def encrypt_with_gs(source: Path, dest: Path) -> None:
+    """Encrypt `source` with Ghostscript and write to `dest`.
+
+    Both owner and user passwords are set, so pdfium will refuse to open
+    the document without supplying one.
+    """
+    gs = shutil.which("gs")
+    if gs is None:
+        raise SystemExit("ghostscript ('gs') not found on PATH; cannot generate encrypted fixture")
+    subprocess.run(
+        [
+            gs,
+            "-q",
+            "-dBATCH",
+            "-dNOPAUSE",
+            "-sDEVICE=pdfwrite",
+            "-sOwnerPassword=multitool-test",
+            "-sUserPassword=multitool-test",
+            f"-sOutputFile={dest}",
+            str(source),
+        ],
+        check=True,
+    )
+
+
 def main() -> int:
     repo_root = Path(__file__).resolve().parent.parent
     fixture_dir = repo_root / "src-tauri" / "multitool-core" / "tests" / "fixtures"
     fixture_dir.mkdir(parents=True, exist_ok=True)
 
-    target = fixture_dir / "three-page.pdf"
-    target.write_bytes(build_pdf(3))
-    print(f"wrote {target} ({target.stat().st_size} bytes)")
+    fixtures: list[tuple[str, bytes]] = [
+        ("three-page.pdf", build_pdf(3)),
+        ("single-page.pdf", build_pdf(1)),
+        # Structurally valid PDF that pdfium loads OK but with zero pages —
+        # used to exercise convert.rs's post-load empty check.
+        ("zero-page.pdf", build_pdf(0)),
+        # `corrupt.pdf` looks like a PDF until it abruptly isn't. pdfium's
+        # parser rejects it as a format error, which is what we want for the
+        # "ProcessingFailed" mapping test.
+        ("corrupt.pdf", b"%PDF-1.4\nthis is not a valid PDF body\n%%EOF\n"),
+    ]
+    for name, data in fixtures:
+        target = fixture_dir / name
+        target.write_bytes(data)
+        print(f"wrote {target} ({target.stat().st_size} bytes)")
+
+    encrypted = fixture_dir / "encrypted.pdf"
+    encrypt_with_gs(fixture_dir / "single-page.pdf", encrypted)
+    print(f"wrote {encrypted} ({encrypted.stat().st_size} bytes)")
+
     return 0
 
 

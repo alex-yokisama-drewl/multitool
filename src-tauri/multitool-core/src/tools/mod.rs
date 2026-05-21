@@ -1,0 +1,12 @@
+//! Pure-logic implementations of each tool.
+//!
+//! One module per tool — these mirror `src-tauri/src/tools/<tool>/` on the
+//! shell side. Heavy work (PDF rendering, image encoding, …) lives here so it
+//! is testable without `tauri::test`. The shell modules are thin Tauri-command
+//! adapters that delegate into these.
+//!
+//! Adding a tool: `pub mod <tool_name>;` and you're done — there is no central
+//! registry on this side. The registry pattern is enforced on the shell side
+//! (`src-tauri/src/tools/mod.rs::register_commands`).
+
+pub mod pdf_to_images;

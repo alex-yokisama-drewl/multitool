@@ -36,33 +36,12 @@ The one decision still TBD: **pdfium binary distribution strategy** — resolved
 - No frontend TS mirror exists yet — added when C7 introduces the IPC wrapper.
 - Serialization round-trip test added alongside existing AppError tests.
 
-### [ ] C3 — feat(core): pdf-to-images pure conversion
-- Module: `multitool-core/src/tools/pdf_to_images/{mod.rs, convert.rs}`
-- Public API (final):
-  ```rust
-  pub struct Opts { pub format: Format, pub dpi: u32 }
-  pub enum Format { Png, Jpeg }
-  pub struct PageOutput { pub index: u32, pub encoded: Vec<u8> }
-  pub struct JobSummary { pub page_count: u32, pub duration: Duration }
-
-  pub fn convert(
-      pdf_bytes: &[u8],
-      opts: &Opts,
-      on_page: impl FnMut(PageOutput) -> Result<(), AppError>,
-      cancel: &CancellationToken,
-  ) -> Result<JobSummary, AppError>;
-  ```
-- Check in remaining fixtures: `encrypted.pdf`, `corrupt.pdf`, `single-page.pdf` (≤ 20 KB each)
-- **Tests (target ≥80% line cov on `convert.rs`):**
-  - PNG output: callback fires N times; bytes start with PNG magic
-  - JPEG output: same, JPEG magic
-  - DPI 72 vs 300: callback receives different `encoded.len()` / decoded dimensions
-  - Encrypted PDF → `Err(AppError::Encrypted)`
-  - Corrupt PDF → `Err(AppError::ProcessingFailed { .. })`
-  - Zero-page PDF → `Err(AppError::ProcessingFailed { .. })`
-  - Cancellation after page 1 → callback fires once, then `Err(AppError::Cancelled)`
-  - `on_page` returning `Err` → conversion halts and propagates the error
-  - DPI clamp (or rejection) — confirm the API contract during impl
+### [x] C3 — feat(core): pdf-to-images pure conversion
+- Module: `multitool-core/src/tools/pdf_to_images/{mod.rs, convert.rs}` with the planned public API (`Opts`, `Format`, `PageOutput`, `JobSummary`, `convert`).
+- **DPI contract:** silently clamped to `[DPI_MIN, DPI_MAX]` = `[72, 600]`. Documented on `Opts`; tested at both bounds.
+- Fixtures (≤ 20 KB each): `single-page.pdf`, `encrypted.pdf` (gs-produced), `corrupt.pdf`, `zero-page.pdf`. Generator extended in `scripts/gen_pdf_fixture.py`.
+- **Pdfium singleton:** `pdfium::instance()` (OnceLock + Mutex) replaces the per-call `bind_to_library`; rationale + future-tool guidance recorded in [../../DECISIONS.md](../../DECISIONS.md) → "Pdfium is a process-wide singleton".
+- **Tests:** 11 unit tests in `convert.rs` covering PNG/JPEG magic, DPI scaling, encrypted/corrupt/zero-page errors, cancellation (before any page + between pages), `on_page` Err propagation, DPI clamp at both bounds. `cargo llvm-cov` reports **90.54% line coverage** on `convert.rs`.
 
 ### [ ] C4 — feat(core): unique_path helper for duplicate-name policy
 - Module: `multitool-core/src/fs.rs`
