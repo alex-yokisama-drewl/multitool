@@ -4,6 +4,14 @@ Plan for taking the repo from "spec + CLAUDE.md only" to a buildable scaffold wi
 
 Phases run roughly in order; within a phase, sub-tasks can be parallelized. Each phase ends with a checkpoint commit so we can bisect later.
 
+## Working through this plan
+
+When a Claude session executes a phase:
+
+- **Mark the phase complete in this doc once it lands.** Replace the detailed sub-task list with a short prose summary in the same style as the already-done phases below (one paragraph; reference the checkpoint commit subject).
+- **Prune anything no longer relevant.** Resolved questions, completed sub-tasks, transient dev-env notes that no longer apply — delete them. The plan should describe what's left to do, not what was done.
+- **Pause and ask for confirmation before starting the next phase.** Don't chain phases together unprompted.
+
 ---
 
 ## Phase A — Local prerequisites — DONE (2026-05-21)
@@ -32,20 +40,26 @@ special-case it.
 
 ---
 
-## Phase C — Frontend configuration
+## Phase C — Frontend configuration — DONE in `chore: configure frontend toolchain (tailwind, shadcn, zustand, router)`
 
-1. Install and configure **Tailwind CSS** (PostCSS, base/components/utilities, content globs).
-2. Initialize **shadcn/ui** (`pnpm dlx shadcn@latest init`). Do not pre-install components — pull them in as tools need them.
-3. Add **Zustand** and **React Router** (configure hash router per SPEC §4).
-4. Set `tsconfig.json` → `strict: true`, `noUncheckedIndexedAccess: true`, path alias `@/*` → `src/*`.
-5. ESLint + Prettier (flat config), with the React + TS plugins. Lint rule: no `any` without an inline justification comment.
-6. Build out the directory skeleton from SPEC §9:
-   ```
-   src/{app,components,tools,lib}/
-   src/tools/registry.ts   # exports an empty Tool[] for now
-   ```
-7. Minimal app shell: a placeholder dashboard route that reads from the (empty) registry and shows "no tools yet."
-8. **Checkpoint commit:** `chore: configure frontend toolchain (tailwind, shadcn, zustand, router)`
+Tailwind v4 wired via `@tailwindcss/vite` (no PostCSS, no `tailwind.config.js`
+— modern default; diverges from the v3 wording the plan originally had).
+shadcn/ui initialized with the Nova preset (radix base, neutral color); no
+components pre-installed. Zustand and `react-router-dom` added; the router
+uses hash mode per SPEC §4. `tsconfig.json` gained `noUncheckedIndexedAccess`
+and the `@/*` path alias (`baseUrl` dropped — deprecated in TS 6). ESLint 9
+flat config wires typescript-eslint type-checked rules plus the React /
+Hooks / Refresh plugins, with `@typescript-eslint/no-explicit-any` as an
+error (suppressions require an inline justification per CLAUDE.md). Prettier
+runs alongside via `eslint-config-prettier`; markdown and `src-tauri/` are
+prettier-ignored. The directory skeleton from SPEC §9
+(`src/{app,components,tools,lib}/`) exists; `src/tools/registry.ts` exports
+an empty `Tool[]`; a placeholder `Dashboard` route reads the registry and
+renders a "no tools yet" empty state.
+
+**Heads-up for Phase G:** ESLint had to be pinned to `^9` —
+`eslint-plugin-react@7.37` does not yet support ESLint 10. Revisit when the
+plugin updates so CI doesn't drift onto a deprecated major.
 
 ---
 
@@ -135,7 +149,10 @@ To keep this PR reviewable and avoid scope creep:
 
 ## Resolved tooling choices
 
+- **Tailwind v4** (settled in Phase C). Uses `@tailwindcss/vite` and a single `@import "tailwindcss"` in the CSS entry — no PostCSS config, no `tailwind.config.js`. Side effect: shadcn's generated CSS imports `shadcn/tailwind.css`, so `shadcn` is a runtime dependency, not just a CLI tool.
+- **shadcn/ui Nova preset** (settled in Phase C). Radix base, neutral color, Lucide icons, Geist Variable font. The default theme is fine per the SPEC scaffold non-goals; revisit if the app ever needs custom branding.
+- **ESLint 9 (not 10)** (settled in Phase C). `eslint-plugin-react@7.37` peer-deps cap at ESLint 9; bumping to 10 throws at lint time. Track upstream and bump when the plugin catches up.
 - **E2E driver**: Playwright against `pnpm dev` (the Vite server), with Tauri IPC mocked at the `src/lib/` wrapper boundary. SPEC §8.1 asks for Playwright by name, and the official Tauri WebDriver path (`tauri-driver`) is WebdriverIO-only. This gives us happy-path UI coverage now; if we later need real desktop-shell coverage we can add WebdriverIO + `tauri-driver` as a second e2e lane without ripping out Playwright.
 - **Rust coverage**: `cargo-llvm-cov`. Works on all three CI OSes; `cargo-tarpaulin` is effectively Linux-only and we need the coverage gate to run on the same matrix as the rest of CI.
 
-Both are reversible later — flagged here so the scaffold PR description can call them out for review.
+All reversible later — flagged here so the scaffold PR description can call them out for review.
