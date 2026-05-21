@@ -10,7 +10,6 @@ Cross-platform offline desktop multitool — image / PDF / etc. conversions that
 - [ARCHITECTURE.md](ARCHITECTURE.md) — tech stack and architecture patterns
 - [DECISIONS.md](DECISIONS.md) — running log of noteworthy choices and caveats
 - [CLAUDE.md](CLAUDE.md) — working agreement for AI-assisted contributions; loaded into every Claude Code session
-- [SCAFFOLD_PLAN.md](SCAFFOLD_PLAN.md) — _temporary_; tracks scaffold work to `v0.1.0-scaffold`, deleted after
 - [CHANGELOG.md](CHANGELOG.md) — per-release notes (generated from conventional commits)
 
 ## Quickstart

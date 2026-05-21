@@ -11,7 +11,6 @@ This file is loaded automatically into every Claude Code session in this repo. I
 - [ASSIGNMENT.md](ASSIGNMENT.md) — product brief: what to build, why, Phase 1 acceptance, roadmap. Read at the start of any non-trivial task.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — tech stack, patterns (tool registry, process model, IPC, error handling), testing approach, file conventions. Read alongside ASSIGNMENT for non-trivial tasks.
 - [DECISIONS.md](DECISIONS.md) — running log of noteworthy choices, caveats, recipes. Check when something looks weird; it's probably explained there.
-- [SCAFFOLD_PLAN.md](SCAFFOLD_PLAN.md) — **temporary**; sequences toolchain/CI/test-harness phases up to `v0.1.0-scaffold`. After that tag lands, the file is historical and gets deleted (persistent notes migrate to DECISIONS.md first).
 - [CHANGELOG.md](CHANGELOG.md) — per-release notes (generated from conventional commits via `git-cliff`).
 
 If a request conflicts with ASSIGNMENT or ARCHITECTURE, surface the conflict rather than silently picking one — those docs change through discussion, not drift.
@@ -75,7 +74,7 @@ All `pnpm` commands run from the repo root; all `cargo` commands run from `src-t
 - **Rust gates:** `cargo fmt --all --check` · `cargo clippy --workspace --all-targets -- -D warnings` · `cargo test -p multitool-core --all-targets` · `cargo llvm-cov --summary-only -p multitool-core`
 - **Hooks:** `pnpm exec lefthook run pre-commit` · `pnpm exec lefthook run pre-push`
 
-`-p multitool-core` on `cargo test`/`cargo llvm-cov` keeps the Tauri-shell test exe out of the run; it can't launch on the Windows CI runner (SCAFFOLD_PLAN Phase G).
+`-p multitool-core` on `cargo test`/`cargo llvm-cov` keeps the Tauri-shell test exe out of the run; it can't launch on the Windows CI runner (see [DECISIONS.md](DECISIONS.md) → "Workspace split").
 
 ## What NOT to do
 
