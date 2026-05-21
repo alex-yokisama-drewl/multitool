@@ -16,15 +16,16 @@ A new tool is meant to be **two new folders + two import lines + tests**, with n
 - `docs/tools/<tool-id>.md` — inputs, options, output naming, edge cases, acceptance
 - If missing, write it first using the template at the bottom of this file
 
-### 2. Create the Rust module
-- Folder: `src-tauri/src/tools/<tool_id>/`
-- Files:
-  - `mod.rs` — `#[tauri::command]` entry points; wraps the pure function with progress events, cancellation, and result envelope
-  - `convert.rs` — pure processing logic: `fn convert(input, opts) -> Result<output, AppError>`. No tauri imports.
-- Where does `convert.rs` live? If reusable across tools, move it into `multitool-core`. Otherwise keep it inside the shell module. (Re-evaluate once we have a second tool.)
+### 2. Create the Rust modules
+A tool spans two folders: a pure-logic module in `multitool-core` and a thin Tauri-aware wrapper in the shell.
+- **In `multitool-core`** (`multitool-core/src/tools/<tool_id>/`):
+  - `convert.rs` (and any other pure logic) — `fn convert(input, opts, …) -> Result<output, AppError>`. No tauri imports. Pure logic always lives here regardless of dep weight — see [../DECISIONS.md](../DECISIONS.md) → "Heavy deps allowed in `multitool-core`".
+- **In the Tauri shell** (`src-tauri/src/tools/<tool_id>/`):
+  - `mod.rs` — `#[tauri::command]` entry points; wraps the pure function with progress events, cancellation, and result envelope. This is the only place Tauri-aware code lives.
+- For multi-output tools (1 input → N outputs), use the streaming `on_page` callback pattern — see [../DECISIONS.md](../DECISIONS.md) → "Streaming `on_page` callback".
 - Tests:
-  - Unit tests on `convert.rs` covering options, edge cases, and error paths (target ≥80% line cov — see [../ARCHITECTURE.md §4](../ARCHITECTURE.md#4-testing-strategy))
-  - Integration test only if the IPC envelope has non-trivial logic
+  - Unit tests on `convert.rs` covering options, edge cases, and every error path (target ≥80% line cov — see [../ARCHITECTURE.md §4](../ARCHITECTURE.md#4-testing-strategy))
+  - Integration test on the shell command only if the IPC envelope has non-trivial logic (event ordering, JobRegistry interaction, etc.)
 
 ### 3. Register the Rust commands
 - Add `pub mod <tool_id>;` in [../src-tauri/src/tools/mod.rs](../src-tauri/src/tools/mod.rs)
@@ -51,7 +52,8 @@ A new tool is meant to be **two new folders + two import lines + tests**, with n
 ### 7. Add tests
 | Layer | Runner | What to cover |
 | --- | --- | --- |
-| Rust pure | `cargo test` (in `multitool-core` if extracted, otherwise the shell) | Inputs, options, edge cases, every error variant |
+| Rust pure | `cargo test -p multitool-core` | Inputs, options, edge cases, every error variant |
+| Rust shell glue | `cargo test` against the shell | Only if the IPC envelope has non-trivial logic |
 | React component | Vitest + Testing Library | Renders; calls IPC wrapper; surfaces errors |
 | E2E | Playwright against `pnpm dev` | Happy path: pick file → convert → see result |
 
@@ -67,7 +69,8 @@ A new tool should consume from these, not duplicate. Most are stubs today — th
 | Tauri IPC wrappers | [../src/lib/](../src/lib/) | **TODO** — only `cn` util exists; first IPC wrapper lands with PDF→Images |
 | shadcn UI primitives | [../src/components/ui/](../src/components/ui/) | **TODO** — empty; generate on demand with `pnpm dlx shadcn add <component>` |
 | Shared components (FilePicker, JobProgress, …) | [../src/components/](../src/components/) | **TODO** — none yet; extract from PDF→Images |
-| Path + duplicate-name helpers | [../src-tauri/src/fs/](../src-tauri/src/fs/) | **TODO** — module stub only; `unique_path` etc. land with PDF→Images output writer |
+| Path + duplicate-name helpers (pure) | `multitool-core/src/fs.rs` *(lands with PDF→Images)* | **TODO** — `unique_path` and the output writer land in `multitool-core` per [../DECISIONS.md](../DECISIONS.md) → "Heavy deps allowed in `multitool-core`" |
+| Tauri-aware path helpers | [../src-tauri/src/fs/](../src-tauri/src/fs/) | **TODO** — module stub only; reserved for resolution that genuinely needs Tauri APIs (e.g. app-data dir) |
 | Error type | `multitool_core::error::AppError` | Available — variants: `FileNotFound`, `PermissionDenied`, `UnsupportedFormat`, `ProcessingFailed`, `Cancelled` |
 | Cancellation | `multitool_core::ipc::JobRegistry` + `cancel_job` command | Available |
 
@@ -111,7 +114,8 @@ This guide was written before any tool exists, so several sections are aspiratio
 
 - [ ] Replace each "Shared surfaces" TODO with concrete helper names + signatures
 - [ ] Add the first IPC wrapper pattern (event subscription + cancellation) as a worked example
-- [ ] Confirm the `convert.rs` vs `multitool-core` placement rule against what actually happened
+- [ ] Confirm the "pure logic in `multitool-core`" rule held up in practice (if not, update DECISIONS)
 - [ ] Decide whether progress events have a shared shape worth documenting once and for all
 - [ ] Trim or rewrite anything here that didn't survive contact with the first real tool
 - [ ] Decide whether the per-tool brief template needs more / fewer sections
+- [ ] Decide whether the "ephemeral build-plan file" pattern (e.g. `docs/tools/<tool-id>-plan.md`) earned its keep, and either bake it into the playbook or drop it
