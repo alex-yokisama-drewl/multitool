@@ -6,26 +6,29 @@ Phases run roughly in order; within a phase, sub-tasks can be parallelized. Each
 
 ---
 
-## Phase A — Local prerequisites (one-time, not committed)
+## Phase A — Local prerequisites — DONE (2026-05-21)
 
-Verify the dev box has what Tauri 2 needs before touching the repo:
+All toolchains and Linux system libs verified/installed on the dev box: Rust
+1.95 via rustup, pnpm 9 via corepack on Node 20, plus Tauri's webkit2gtk-4.1 /
+ayatana-appindicator3 / librsvg2 / libsoup-3.0 dev libs. Per-machine setup,
+nothing committed.
 
-- Rust stable (via `rustup`), `cargo`, `rustfmt`, `clippy`
-- Node LTS + `pnpm` (corepack OK)
-- Linux system libs for Tauri: `webkit2gtk-4.1`, `libayatana-appindicator3`, `librsvg2`, `libsoup-3.0`, build-essential
-- `gh` CLI (already used in CLAUDE.md workflow)
-
-Document any missing dep as it surfaces; do **not** add install scripts to the repo.
+**Dev-environment note:** VS Code installed via snap leaks confinement env
+(`/snap/core20/...` libpthread) into its integrated terminal, which makes
+`pnpm tauri dev` fail at runtime with a `GLIBC_PRIVATE` symbol lookup error.
+Launch the dev shell from a non-VS-Code terminal, or replace the snap install
+with the `.deb` build.
 
 ---
 
-## Phase B — Project initialization
+## Phase B — Project initialization — DONE in `chore: scaffold tauri 2 + react + ts template`
 
-1. `pnpm create tauri-app@latest` with: React + TypeScript + Vite + pnpm. Scaffold into the existing repo root (not a subfolder).
-2. Confirm `pnpm tauri dev` opens a window with the default template.
-3. Delete the template's boilerplate UI / Rust greeting command — keep only what's needed to render an empty app shell.
-4. Pin Tauri 2.x, React 18, Vite, TypeScript versions in `package.json` and `Cargo.toml`.
-5. **Checkpoint commit:** `chore: scaffold tauri 2 + react + ts template`
+Scaffolded via `create-tauri-app` (React + TypeScript + Vite, pnpm template),
+trimmed the boilerplate UI and `greet` command down to an empty shell, pinned
+React 18 per SPEC §4 (template defaulted to 19), dropped `tauri-plugin-opener`
+(unused after removing `greet`), and rewrote the Tauri entry point so the
+crate-level `deny(clippy::expect_used)` planned for Phase D will not need to
+special-case it.
 
 ---
 
