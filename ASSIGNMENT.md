@@ -61,7 +61,7 @@ The project intentionally stays in the `0.x` pre-release range. There is no plan
 | Version    | Scope                                                                                                                                                  |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **0.1.0**  | Project scaffold, dashboard shell, tool registry, both Phase 1 tools (with staging-area UX for Images→PDF), full test suite, CI on all three OSes      |
-| **0.2.0**  | Drag-and-drop input on dashboard/tools, output-location override UI                                                                                    |
+| **0.2.0**  | Drag-and-drop input on dashboard/tools, output-location override UI, dashboard tile redesign (square tiles, per-tool color set at registration, category-grouped sections with separator + label) |
 | **0.3.0+** | Additional tools (image format conversion, audio trim, ...) — each as a new module under the registry                                                  |
 
 ## 7. Open Questions

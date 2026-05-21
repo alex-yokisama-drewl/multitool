@@ -155,7 +155,7 @@ export function PdfToImages() {
               Convert
             </Button>
             <Button variant="outline" onClick={() => void choosePdf()}>
-              Choose another PDF
+              Choose a different PDF
             </Button>
           </div>
         </div>
