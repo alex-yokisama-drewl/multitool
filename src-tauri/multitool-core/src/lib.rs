@@ -1,6 +1,6 @@
 //! Pure-logic core for multitool.
 //!
-//! Everything here is testable without spinning up Tauri (SPEC §5.1, §8.1).
+//! Everything here is testable without spinning up Tauri (ARCHITECTURE §3.1, §4).
 //! The Tauri shell in `src-tauri/` depends on this crate and adds command
 //! plumbing on top.
 
