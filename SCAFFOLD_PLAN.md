@@ -63,16 +63,22 @@ plugin updates so CI doesn't drift onto a deprecated major.
 
 ---
 
-## Phase D — Backend configuration
+## Phase D — Backend configuration — DONE in `chore: configure rust backend (error type, tokio, registry stubs)`
 
-1. In `src-tauri/Cargo.toml`, add baseline deps: `tokio` (with `rt-multi-thread`, `macros`, `sync`), `serde`, `serde_json`, `thiserror`, `tracing`, `tracing-subscriber`.
-   - Media deps (`image`, `pdfium-render`, `printpdf`) land with the tool that needs them, not now.
-2. Crate-level `#![deny(clippy::unwrap_used, clippy::expect_used)]` in `main.rs` / `lib.rs`.
-3. Define `AppError` enum per SPEC §5.4 with `thiserror`; wire serde for IPC serialization.
-4. Stub `src-tauri/src/{tools,ipc,fs}/` per SPEC §9, each with `mod.rs`. `tools/mod.rs` exports an empty command list / registry.
-5. Stub the cancellation-token plumbing (job ID → `CancellationToken` map) so the first tool can plug into it.
-6. Confirm `cargo fmt`, `cargo clippy -- -D warnings`, `cargo test` (zero tests) all pass.
-7. **Checkpoint commit:** `chore: configure rust backend (error type, tokio, registry stubs)`
+Baseline Rust deps added (`tokio` rt-multi-thread/macros/sync, `tokio-util`
+for `CancellationToken`, `thiserror`, `tracing` + `tracing-subscriber`); media
+crates wait for the first tool. `AppError` (SPEC §5.4 variants) lives in
+`error.rs` and serializes as `{ kind, message }` so the webview can branch on
+`kind`. Module skeleton from SPEC §9 in place: `tools/`, `ipc/`, `fs/`.
+`tools::register_commands` is the single edit point for adding a tool —
+`lib.rs` calls it once via `Builder`, so no shared-shell edits are needed
+when tools are added. `ipc::JobRegistry` maps `JobId → CancellationToken`
+behind a `Mutex` with poison-recovery (`unwrap_or_else(|p| p.into_inner())`
+keeps `clippy::unwrap_used` honest); `cancel_job` is the first registered
+command and gives `generate_handler!` a non-empty list. `lib.rs` wires
+`tracing_subscriber::fmt().with_env_filter(...).try_init()` and manages the
+registry. Crate-level lints are gated with `cfg_attr(not(test), ...)` so unit
+tests in `error.rs` / `ipc/mod.rs` can use `.unwrap()` freely.
 
 ---
 
