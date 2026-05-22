@@ -17,8 +17,15 @@ tokio-util = "0.7"
 pdfium-render = "0.9"
 # `image` arrives transitively via pdfium-render's `image_025` default feature.
 # Declared here too so convert.rs (C3) can use `image` types without leaning on
-# pdfium-render's re-exports.
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# pdfium-render's re-exports. `webp` is needed by images-to-pdf for the .webp
+# input format from the brief; png + jpeg cover both tools' encode paths.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+# PDF assembly for images-to-pdf. Default features pull in printpdf's HTML +
+# layout pipeline (azul-layout, kuchiki, rust-fontconfig) which we don't use —
+# image-only PDFs go through ImageXObject directly, so the lean build is fine.
+# 0.7 is intentional: stable, well-documented API; 0.8/0.9 reshaped surface
+# every release.
+printpdf = { version = "0.7", default-features = false }
 
 [build-dependencies]
 # Build script downloads + extracts the platform-matched pdfium binary from
