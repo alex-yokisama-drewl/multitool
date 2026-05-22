@@ -4,7 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { pickConvertibleImages, revealInFolder } from "@/lib/system";
+import {
+  allowImagePreview,
+  imageAssetUrl,
+  pickConvertibleImages,
+  revealInFolder,
+} from "@/lib/system";
 import { convertImageFormat } from "@/lib/tools/imageFormatConverter";
 import type {
   AlphaHandling,
@@ -88,6 +93,11 @@ export function ImageFormatConverter() {
   const pickImages = async () => {
     const picked = await pickConvertibleImages();
     if (!picked) return;
+    // Grant per-path asset-protocol scope so `convertFileSrc(path)` in
+    // the staging grid can resolve the URL. See DECISIONS → "Asset
+    // protocol scope: dynamic per-pick". The Rust side re-validates
+    // the extension set, so a renamed file fails closed.
+    await allowImagePreview(picked);
     setState({ kind: "staging", paths: picked });
   };
 
@@ -191,18 +201,30 @@ export function ImageFormatConverter() {
             Staged ({state.paths.length}). Output lands next to each input.
           </div>
 
-          <ul role="list" aria-label="Staged images" className="space-y-2">
+          <ul
+            role="list"
+            aria-label="Staged images"
+            className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4"
+          >
             {state.paths.map((path) => (
               <li
                 key={path}
-                className="flex items-center justify-between rounded-md border border-border bg-card px-3 py-2 text-sm"
+                className="relative flex flex-col items-center gap-2 rounded-md border border-border bg-card p-2"
               >
-                <span className="truncate">{fileName(path)}</span>
+                <img
+                  src={imageAssetUrl(path)}
+                  alt=""
+                  draggable={false}
+                  className="h-24 w-full rounded object-contain"
+                />
+                <span className="line-clamp-2 break-all text-center text-xs">
+                  {fileName(path)}
+                </span>
                 <button
                   type="button"
                   aria-label={`Remove ${fileName(path)}`}
                   onClick={() => removePath(path)}
-                  className="ml-3 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border bg-background text-sm leading-none shadow-sm hover:bg-accent"
+                  className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full border border-border bg-background text-sm leading-none shadow-sm hover:bg-accent"
                 >
                   ×
                 </button>
