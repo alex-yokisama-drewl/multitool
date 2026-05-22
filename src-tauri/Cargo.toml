@@ -28,7 +28,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 multitool-core = { path = "multitool-core" }
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["protocol-asset"] }
 serde = { version = "1", features = ["derive"] }
 # `tokio` and `tracing` are Phase-D baseline deps for future tool commands;
 # nothing in this crate uses them directly yet.

@@ -4,6 +4,26 @@ Choices, caveats, and recipes that affect future work — patterns we must keep 
 
 ---
 
+## 2026-05-22 — Asset protocol scope: dynamic per-pick, not static glob
+
+Webview thumbnail previews for picked images (`convertFileSrc(path)` in the Images → PDF staging grid) require the resolved path to fall within Tauri's asset-protocol scope. The narrowest grant we can give the webview is: nothing by default, allow each path the user actually picked. Implemented as:
+
+- [src-tauri/tauri.conf.json](src-tauri/tauri.conf.json): `app.security.assetProtocol = { enable: true, scope: [] }` — the protocol is on, but starts with an empty allowlist.
+- [src-tauri/src/asset_scope.rs](src-tauri/src/asset_scope.rs): `allow_image_preview(paths)` Tauri command calls `app.asset_protocol_scope().allow_file(p)` per picked path. Re-validates `.png/.jpg/.jpeg/.webp` server-side because the OS picker's extension filter is advisory (a direct IPC call could bypass it). Registered in [src-tauri/src/tools/mod.rs](src-tauri/src/tools/mod.rs).
+- The `tauri` crate needs the `protocol-asset` feature; build script asserts allowlist↔Cargo features parity, so leaving it off wedges the build.
+
+**Why not a static glob (e.g. `**/*.png`)?** Webview-visible to every matching file on disk, not just picked ones. Plan B2's fallback option, but dynamic was confirmed viable so we used it.
+
+**Why not `fs:asset` capability?** The brief used that term loosely; no such permission identifier exists in Tauri 2.x. Asset protocol is a core feature configured under `app.security.assetProtocol`, not a `@tauri-apps/plugin-fs` permission. The capabilities file ([src-tauri/capabilities/default.json](src-tauri/capabilities/default.json)) is unchanged.
+
+**CSP:** still `null`. If tightened later, `img-src 'self' asset: http://asset.localhost` is the entry that lets the rendered `asset:` URLs through.
+
+**Future-tool pattern:** any tool wanting webview-side resource access from user-picked paths should add an `allow_*_preview` command on the same model — extension-validated, allow-file per path. Don't extend the static scope.
+
+Refs: [Tauri 2.x asset protocol scope](https://v2.tauri.app/security/asset-protocol/), [config reference — AssetProtocolConfig](https://v2.tauri.app/reference/config/#assetprotocolconfig).
+
+---
+
 ## 2026-05-22 — Tauri plugin baseline: `dialog` + `opener`, wrapped behind `src/lib/system.ts`
 
 `tauri-plugin-dialog` (file picker — `<input type="file">` is a dead-end in Tauri; the webview hides the OS path) and `tauri-plugin-opener` (`revealItemInDir`) are registered in [src-tauri/src/lib.rs](src-tauri/src/lib.rs) with capabilities granted in [src-tauri/capabilities/default.json](src-tauri/capabilities/default.json). **All plugin calls go through [src/lib/system.ts](src/lib/system.ts)** — components stay presentational and Playwright keeps one mock seam. Future tools should extend `system.ts` rather than importing `@tauri-apps/plugin-*` directly. New plugins need their own DECISIONS entry and the narrowest-possible capability grant.

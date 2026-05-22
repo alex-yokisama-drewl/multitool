@@ -1,5 +1,6 @@
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
+pub mod asset_scope;
 pub mod fs;
 pub mod ipc;
 pub mod tools;

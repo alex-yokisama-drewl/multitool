@@ -2,7 +2,7 @@
 
 > Ephemeral working doc. Deleted when the tool ships, alongside [images-to-pdf.md](images-to-pdf.md). The brief is the *what*; this is the *how* and the *where we are*. Update inline as commits land — tick boxes, append notes, record blockers. Architectural decisions that emerge mid-build go to [../../DECISIONS.md](../../DECISIONS.md), not this file.
 
-**Status:** 2026-05-22 — Phase B in progress. B1 landed; B2 (fs:asset scope discovery) next.
+**Status:** 2026-05-22 — Phase B in progress. B1+B2 landed; B3 (@dnd-kit dep) next.
 
 ## Conventions for this doc
 
@@ -45,9 +45,11 @@ Goal: get the picker, capability grants, and new dep in place before any new too
   - Returns `null` on cancel, `string[]` on success (never an empty array — Tauri's dialog suppresses that).
   - No test needed (boundary file, mocked by Playwright); document the contract inline.
 
-- [ ] **B2. `chore(capabilities): grant fs:asset scope for thumbnails`**
-  - Add the narrowest possible scope to [src-tauri/capabilities/default.json](../../src-tauri/capabilities/default.json) that lets `convertFileSrc()` resolve picked image paths. **Discovery moment:** confirm whether Tauri 2.x supports per-pick dynamic scope grants vs. requiring a static glob. If only static is viable, scope to image extensions only.
-  - Write a [DECISIONS.md](../../DECISIONS.md) entry recording the chosen scope shape and why (mirrors the dialog/opener precedent).
+- [x] **B2. `feat(asset-scope): dynamic per-pick image-preview grant`** *(scope reshaped during discovery; see Log)*
+  - Tauri 2.x asset-protocol scope is `app.security.assetProtocol` in [tauri.conf.json](../../src-tauri/tauri.conf.json), not a capability/permission. The brief's "fs:asset" was a misnomer.
+  - Dynamic per-pick chosen: empty static scope + new `allow_image_preview` command in [../../src-tauri/src/asset_scope.rs](../../src-tauri/src/asset_scope.rs) that re-validates extensions and calls `allow_file` per path. Registered in [tools/mod.rs](../../src-tauri/src/tools/mod.rs); `tauri` crate gained the `protocol-asset` feature (required by build).
+  - DECISIONS entry written: [../../DECISIONS.md](../../DECISIONS.md) → "Asset protocol scope: dynamic per-pick".
+  - Frontend wrapper deferred to E2 (the call site that needs it).
 
 - [ ] **B3. `chore(deps): add @dnd-kit/sortable`**
   - `pnpm add @dnd-kit/sortable @dnd-kit/core` (peer required).
@@ -148,13 +150,14 @@ Goal: tool view with staging area, reorder, add-more, remove, and the Create-PDF
 
 *(Append as they surface. Resolve and strike through. If a resolution changes the brief, edit the brief — not just the note here.)*
 
-- **B2 — Tauri 2.x dynamic vs. static `fs:asset` scope.** Need to confirm during implementation. If only static globs are supported, capture in DECISIONS and document the trade-off (slightly broader filesystem visibility from the webview than ideal, but bounded to image extensions).
+- ~~**B2 — Tauri 2.x dynamic vs. static `fs:asset` scope.**~~ Resolved 2026-05-22: dynamic is viable via `Manager::asset_protocol_scope().allow_file(...)`. Picked dynamic; the brief's "fs:asset" was a misnomer (asset protocol is core, not an `fs:` permission). See DECISIONS.
 - **D2 — shim-extraction decision.** Defer until D1 lands; commit message records the call.
 
 ## Log
 
 *(One line per noteworthy event: phase boundary, discovery moment, scope shift. Newest first.)*
 
+- 2026-05-22 — **Discovery + B2 landed.** Brief's "fs:asset" was a misnomer (no such Tauri 2.x permission); real grant is `app.security.assetProtocol` in `tauri.conf.json`. Dynamic per-pick IS supported via `Manager::asset_protocol_scope().allow_file(...)`. Picked dynamic. New `allow_image_preview` command validates extensions server-side and calls `allow_file` per picked path. Required adding `protocol-asset` to the `tauri` crate features. DECISIONS entry recorded. Frontend wrapper deferred to E2. Exit gate green (rust fmt/clippy/test + `pnpm tauri build --no-bundle` + frontend lint/typecheck).
 - 2026-05-22 — B1 landed: `pickImageFiles()` added to [../../src/lib/system.ts](../../src/lib/system.ts). Multi-select, `.png/.jpg/.jpeg/.webp` filter, returns `null` on cancel / `string[]` on confirm. No unit test per plan (boundary file, mocked by Playwright).
 - 2026-05-22 — A3 landed: `JobProgress` extracted to [../../src/components/JobProgress.tsx](../../src/components/JobProgress.tsx) (props `{ current, total, label?, onCancel }`); handles the pre-first-event "starting…" case internally so Cancel stays available throughout `running`. PdfToImages threads through with `label="page"`. 5 new component tests; existing PdfToImages tests pass untouched. Phase A gate (lint/test/typecheck/e2e) green.
 - 2026-05-22 — A2 landed: `runJob<Args, Progress, Result>` extracted to [../../src/lib/jobRunner.ts](../../src/lib/jobRunner.ts); `pdfToImages.ts` is now a one-call wrapper. New `jobRunner.test.ts` covers jobId filter / abort / unlisten / payload passthrough; existing `pdfToImages.test.ts` kept passing untouched (mocks still at `@tauri-apps/api/*`, which `runJob` calls internally). 19/19 vitest green.
