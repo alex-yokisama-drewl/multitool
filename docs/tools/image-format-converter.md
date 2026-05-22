@@ -68,7 +68,7 @@ Skip + continue. Per-file decode/encode failures don't abort the job — they're
 SVG inputs go through `resvg` (pure Rust, no native deps; `usvg` for parsing + `tiny-skia` for rendering — both transitive). The rasterized RGBA buffer then flows through the same encode + alpha-handling pipeline as decoded raster inputs.
 
 - **Size policy** controlled by `svg_raster_size` (see [Options](#options)).
-- **`natural`** — uses the SVG's intrinsic `width`/`height`. If both are missing or non-pixel units, fall back to the `viewBox` dimensions at 1:1 (CSS px). If `viewBox` is also missing, the file is `UnsupportedFormat` (no sane default).
+- **`natural`** — uses `usvg`'s reported tree size, which honors `width`/`height` first, falls back to `viewBox`, and finally to its own default (CSS-spec 300×150) if neither is present. We don't second-guess `usvg`; a document that resolves to a non-positive size on its own is the only `natural`-mode reject.
 - **`longest-edge-px:N`** — scales the intrinsic size so the longest side is exactly N pixels (aspect ratio preserved).
 - **Fonts:** load no system fonts (build cost + cross-platform inconsistency not worth it for this tool). SVG text using system fonts renders with `usvg`'s fallback behavior — a warning is emitted on the file (`"SVG references fonts; text may not render"`) if `usvg` reports any text node during parsing.
 - **`<image>` href external resources** are not resolved (no I/O during raster). Embedded data URIs are honored. A warning surfaces if external refs are encountered.

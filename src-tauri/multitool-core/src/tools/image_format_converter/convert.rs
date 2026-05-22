@@ -122,6 +122,14 @@ pub struct EncodedFile {
 pub(crate) const QUALITY_MIN: u8 = 1;
 pub(crate) const QUALITY_MAX: u8 = 100;
 
+/// Inclusive bounds for `SvgRasterSize::LongestEdgePx`. Above this the
+/// allocated pixmap balloons (8192² × 4 bytes ≈ 256 MB) — past the
+/// "interactive desktop tool" use case and into "did you mean to do that?"
+/// territory. Silently clamped to the nearest bound, matching the
+/// `jpeg_quality` policy.
+pub(crate) const SVG_PX_MIN: u32 = 1;
+pub(crate) const SVG_PX_MAX: u32 = 8192;
+
 /// Convert a single image's bytes from its source format to `opts.target_format`.
 ///
 /// `source_ext` is the source file's extension (lowercased, no leading dot) —
@@ -135,16 +143,11 @@ pub(crate) const QUALITY_MAX: u8 = 100;
 /// Cancellation is the orchestrator's responsibility; this fn is a small,
 /// CPU-bound transform without internal cancel checkpoints.
 pub fn convert_one(source_ext: &str, input_bytes: &[u8], opts: &Opts) -> AppResult<EncodedFile> {
-    if source_ext.eq_ignore_ascii_case("svg") {
-        // SVG path lands in Phase A4 via resvg. Until then it surfaces as a
-        // typed UnsupportedFormat so the orchestrator routes it through
-        // skip + continue instead of aborting the whole batch.
-        return Err(AppError::UnsupportedFormat {
-            detail: "SVG input not yet wired (Phase A4 will rasterize via resvg)".into(),
-        });
-    }
-
-    let img = decode_with_orientation(source_ext, input_bytes)?;
+    let img = if source_ext.eq_ignore_ascii_case("svg") {
+        rasterize_svg(input_bytes, opts.svg_raster_size)?
+    } else {
+        decode_with_orientation(source_ext, input_bytes)?
+    };
     encode_raster(&img, opts)
 }
 
@@ -182,6 +185,91 @@ fn decode_with_orientation(source_ext: &str, bytes: &[u8]) -> AppResult<DynamicI
         DynamicImage::from_decoder(decoder).map_err(|err| image_to_app_err(Path::new(""), err))?;
     img.apply_orientation(orientation);
     Ok(img)
+}
+
+/// Rasterize an SVG document to a `DynamicImage::ImageRgba8` via `resvg`.
+///
+/// Size policy:
+/// - [`SvgRasterSize::Natural`] uses `usvg`'s reported tree size, which
+///   honors `width`/`height` first, falls back to `viewBox`, and finally
+///   to its own default if neither is present. We don't second-guess usvg
+///   here — a document that resolves to a non-positive size on its own is
+///   the only thing we reject as `UnsupportedFormat`.
+/// - [`SvgRasterSize::LongestEdgePx`] scales so the longest side is exactly
+///   the requested pixel count (clamped to `[SVG_PX_MIN, SVG_PX_MAX]`),
+///   preserving aspect ratio.
+///
+/// Errors:
+/// - `AppError::UnsupportedFormat` if `usvg` rejects the bytes or returns
+///   a non-positive / non-finite size.
+/// - `AppError::ProcessingFailed` if the target pixmap can't be allocated.
+///
+/// Fonts: an empty `fontdb` is passed; text nodes parse and route through
+/// usvg's text pipeline but render glyphless (no fonts loaded). Phase A6
+/// adds the "SVG references fonts" warning when text nodes are present.
+fn rasterize_svg(bytes: &[u8], size_policy: SvgRasterSize) -> AppResult<DynamicImage> {
+    let tree = usvg::Tree::from_data(bytes, &usvg::Options::default()).map_err(|err| {
+        AppError::UnsupportedFormat {
+            detail: format!("SVG parse: {err}"),
+        }
+    })?;
+    let intrinsic = tree.size();
+    let intrinsic_w = intrinsic.width();
+    let intrinsic_h = intrinsic.height();
+    if intrinsic_w <= 0.0
+        || intrinsic_h <= 0.0
+        || !intrinsic_w.is_finite()
+        || !intrinsic_h.is_finite()
+    {
+        return Err(AppError::UnsupportedFormat {
+            detail: "SVG has no usable dimensions (need width/height or viewBox)".into(),
+        });
+    }
+
+    let (target_w, target_h, scale) = match size_policy {
+        SvgRasterSize::Natural => (
+            intrinsic_w.round().max(1.0) as u32,
+            intrinsic_h.round().max(1.0) as u32,
+            1.0_f32,
+        ),
+        SvgRasterSize::LongestEdgePx(requested) => {
+            let n = requested.clamp(SVG_PX_MIN, SVG_PX_MAX) as f32;
+            let longest = intrinsic_w.max(intrinsic_h);
+            let scale = n / longest;
+            (
+                (intrinsic_w * scale).round().max(1.0) as u32,
+                (intrinsic_h * scale).round().max(1.0) as u32,
+                scale,
+            )
+        }
+    };
+
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(target_w, target_h).ok_or_else(|| {
+        AppError::ProcessingFailed {
+            detail: format!("SVG: failed to allocate pixmap {target_w}×{target_h}"),
+        }
+    })?;
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::from_scale(scale, scale),
+        &mut pixmap.as_mut(),
+    );
+    Ok(DynamicImage::ImageRgba8(pixmap_to_rgba_image(&pixmap)))
+}
+
+/// Convert a `resvg::tiny_skia::Pixmap` (RGBA8, premultiplied) into an
+/// `image::RgbaImage` (RGBA8, non-premultiplied). `demultiply()` is the
+/// official tiny_skia helper for this — un-premultiplied pixels are what
+/// `image`'s encoders expect.
+fn pixmap_to_rgba_image(pixmap: &resvg::tiny_skia::Pixmap) -> image::RgbaImage {
+    let w = pixmap.width();
+    let h = pixmap.height();
+    let mut img = image::RgbaImage::new(w, h);
+    for (px_in, px_out) in pixmap.pixels().iter().zip(img.pixels_mut()) {
+        let c = px_in.demultiply();
+        px_out.0 = [c.red(), c.green(), c.blue(), c.alpha()];
+    }
+    img
 }
 
 /// Encode a decoded `DynamicImage` to the target raster format.
@@ -527,14 +615,79 @@ mod tests {
         }
     }
 
+    // --- SVG input (Phase A4) ---
+
     #[test]
-    fn svg_extension_returns_unsupported_until_phase_a4() {
-        let out = convert_one("svg", b"<svg/>", &opts(TargetFormat::Png));
-        match out {
-            Err(AppError::UnsupportedFormat { detail }) => {
-                assert!(detail.contains("Phase A4"), "detail was {detail}");
-            }
-            other => panic!("expected UnsupportedFormat for SVG, got {other:?}"),
+    fn svg_natural_size_honors_intrinsic_dimensions() {
+        // tiny.svg declares width="100" height="50", viewBox=0 0 100 50.
+        let mut o = opts(TargetFormat::Png);
+        o.svg_raster_size = SvgRasterSize::Natural;
+        let out =
+            convert_one("svg", &format_fixture("tiny.svg"), &o).expect("SVG → PNG at natural size");
+        assert_round_trip(&out.bytes, ImageFormat::Png, 100, 50);
+    }
+
+    #[test]
+    fn svg_longest_edge_px_scales_aspect_preserved() {
+        // tiny.svg is 100×50 (2:1). longest-edge=200 → output is 200×100.
+        let mut o = opts(TargetFormat::Png);
+        o.svg_raster_size = SvgRasterSize::LongestEdgePx(200);
+        let out = convert_one("svg", &format_fixture("tiny.svg"), &o)
+            .expect("SVG → PNG at longest-edge 200");
+        assert_round_trip(&out.bytes, ImageFormat::Png, 200, 100);
+    }
+
+    #[test]
+    fn svg_longest_edge_px_below_min_is_clamped() {
+        // 0 (below SVG_PX_MIN=1) clamps to 1; 100×50 SVG → 1×0 after rounding,
+        // but the .max(1.0) floor keeps both axes ≥ 1.
+        let mut o = opts(TargetFormat::Png);
+        o.svg_raster_size = SvgRasterSize::LongestEdgePx(0);
+        let out =
+            convert_one("svg", &format_fixture("tiny.svg"), &o).expect("SVG → PNG clamped to 1px");
+        let reader = ImageReader::new(Cursor::new(&out.bytes))
+            .with_guessed_format()
+            .expect("re-read");
+        let img = reader.decode().expect("decode");
+        assert!(img.width() >= 1 && img.height() >= 1);
+        assert!(img.width() <= 1, "width should be clamped: {}", img.width());
+    }
+
+    #[test]
+    fn svg_renders_red_rectangle_visible_in_output() {
+        // Quick sanity check that resvg actually produced pixels, not an
+        // empty pixmap. Center pixel of the encoded PNG should be red-ish.
+        let mut o = opts(TargetFormat::Png);
+        o.svg_raster_size = SvgRasterSize::Natural;
+        let out = convert_one("svg", &format_fixture("tiny.svg"), &o).expect("rasterize tiny.svg");
+        let decoded = decode_png(&out.bytes).to_rgba8();
+        let center = decoded.get_pixel(50, 25).0;
+        assert_eq!(
+            center,
+            [255, 0, 0, 255],
+            "expected solid red at center, got {center:?}"
+        );
+    }
+
+    #[test]
+    fn svg_to_jpeg_routes_through_alpha_flatten() {
+        // SVG is RGBA from resvg. JPEG can't carry alpha → FlattenWhite
+        // composites onto white. The tiny.svg covers the whole frame in
+        // red, so no transparent area exists — just verify the path runs.
+        let mut o = opts(TargetFormat::Jpeg);
+        o.svg_raster_size = SvgRasterSize::Natural;
+        o.alpha_handling = AlphaHandling::FlattenWhite;
+        let out = convert_one("svg", &format_fixture("tiny.svg"), &o)
+            .expect("SVG → JPEG via alpha flatten");
+        assert_round_trip(&out.bytes, ImageFormat::Jpeg, 100, 50);
+    }
+
+    #[test]
+    fn malformed_svg_yields_unsupported_format() {
+        let result = convert_one("svg", b"not an svg", &opts(TargetFormat::Png));
+        match result {
+            Err(AppError::UnsupportedFormat { .. }) => {}
+            other => panic!("expected UnsupportedFormat for malformed SVG, got {other:?}"),
         }
     }
 
