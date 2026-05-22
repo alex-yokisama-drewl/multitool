@@ -13,7 +13,7 @@ test("converts staged images and surfaces the done state", async ({ page }) => {
   await page.getByRole("link", { name: /image format converter/i }).click();
 
   // Idle → staging via the picker mock.
-  await page.getByRole("button", { name: /add images/i }).click();
+  await page.getByRole("button", { name: /^select images$/i }).click();
   await expect(page.getByRole("button", { name: /^convert$/i })).toBeVisible();
   await expect(page.getByText(/staged \(3\)/i)).toBeVisible();
 

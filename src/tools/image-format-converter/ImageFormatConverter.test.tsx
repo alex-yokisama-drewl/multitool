@@ -29,7 +29,7 @@ function renderTool() {
 
 async function pickInto(paths: string[]) {
   pickConvertibleImagesMock.mockResolvedValueOnce(paths);
-  fireEvent.click(screen.getByRole("button", { name: /add images/i }));
+  fireEvent.click(screen.getByRole("button", { name: /^select images$/i }));
   await screen.findByRole("button", { name: /^convert$/i });
 }
 
@@ -40,34 +40,52 @@ describe("ImageFormatConverter", () => {
     revealInFolderMock.mockReset();
   });
 
-  it("renders the idle state with an Add images button", () => {
+  it("renders the idle state with a Select images button", () => {
     renderTool();
     expect(
-      screen.getByRole("button", { name: /add images/i }),
+      screen.getByRole("button", { name: /^select images$/i }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
 
-  it("transitions to staging when the picker returns paths and dedupes on add", async () => {
+  it("Select different images REPLACES the staged batch (no merge)", async () => {
     renderTool();
     await pickInto(["/tmp/a.png", "/tmp/b.jpg"]);
     expect(screen.getByText(/staged \(2\)/i)).toBeInTheDocument();
 
-    // Re-pick with one overlap → still 2.
-    pickConvertibleImagesMock.mockResolvedValueOnce([
-      "/tmp/a.png",
-      "/tmp/c.png",
-    ]);
-    fireEvent.click(screen.getByRole("button", { name: /add more images/i }));
+    // Pick a single new file via "Select different images" — batch
+    // becomes just that file. The previous two are discarded.
+    pickConvertibleImagesMock.mockResolvedValueOnce(["/tmp/c.png"]);
+    fireEvent.click(
+      screen.getByRole("button", { name: /select different images/i }),
+    );
     await waitFor(() => {
-      expect(screen.getByText(/staged \(3\)/i)).toBeInTheDocument();
+      expect(screen.getByText(/staged \(1\)/i)).toBeInTheDocument();
     });
+    // a.png and b.jpg are gone.
+    expect(screen.queryByText("a.png")).not.toBeInTheDocument();
+    expect(screen.queryByText("b.jpg")).not.toBeInTheDocument();
+  });
+
+  it("Select different images preserves the batch if the picker is cancelled", async () => {
+    renderTool();
+    await pickInto(["/tmp/a.png", "/tmp/b.jpg"]);
+    pickConvertibleImagesMock.mockResolvedValueOnce(null);
+    fireEvent.click(
+      screen.getByRole("button", { name: /select different images/i }),
+    );
+    await waitFor(() => {
+      expect(pickConvertibleImagesMock).toHaveBeenCalledTimes(2);
+    });
+    expect(screen.getByText(/staged \(2\)/i)).toBeInTheDocument();
   });
 
   it("stays in idle when the picker is cancelled (null)", async () => {
     renderTool();
     pickConvertibleImagesMock.mockResolvedValueOnce(null);
-    fireEvent.click(screen.getByRole("button", { name: /add images/i }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /^select images$/i }),
+    );
     await waitFor(() => {
       expect(pickConvertibleImagesMock).toHaveBeenCalledTimes(1);
     });
@@ -107,8 +125,14 @@ describe("ImageFormatConverter", () => {
     await pickInto(["/tmp/a.png"]);
     expect(screen.queryByText(/svg raster size/i)).not.toBeInTheDocument();
 
-    pickConvertibleImagesMock.mockResolvedValueOnce(["/tmp/icon.svg"]);
-    fireEvent.click(screen.getByRole("button", { name: /add more images/i }));
+    // Replace the batch with a set that includes an SVG.
+    pickConvertibleImagesMock.mockResolvedValueOnce([
+      "/tmp/a.png",
+      "/tmp/icon.svg",
+    ]);
+    fireEvent.click(
+      screen.getByRole("button", { name: /select different images/i }),
+    );
     expect(await screen.findByText(/svg raster size/i)).toBeInTheDocument();
   });
 

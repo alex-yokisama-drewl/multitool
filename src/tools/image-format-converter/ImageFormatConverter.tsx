@@ -80,25 +80,15 @@ export function ImageFormatConverter() {
     };
   }, [navigate]);
 
-  const addImages = async () => {
+  // Single-batch flow: each picker confirmation REPLACES the staged list.
+  // The user picks all the files for one conversion run at once; the
+  // secondary "Select different images" button is a discard-and-repick,
+  // not an append. Cancelling the picker (null) leaves the current batch
+  // untouched — useful if the user opened the dialog by mistake.
+  const pickImages = async () => {
     const picked = await pickConvertibleImages();
     if (!picked) return;
-    setState((prev) => {
-      const existing = prev.kind === "staging" ? prev.paths : [];
-      // Dedupe on path — picking the same file twice produces no useful
-      // batch behavior (the second would land on `name (1).ext` next to
-      // the first). Keep first-seen order; the brief makes no ordering
-      // promises here.
-      const seen = new Set(existing);
-      const merged = [...existing];
-      for (const path of picked) {
-        if (!seen.has(path)) {
-          merged.push(path);
-          seen.add(path);
-        }
-      }
-      return { kind: "staging", paths: merged };
-    });
+    setState({ kind: "staging", paths: picked });
   };
 
   const removePath = (path: string) => {
@@ -182,7 +172,7 @@ export function ImageFormatConverter() {
       </header>
 
       {state.kind === "idle" && (
-        <Button onClick={() => void addImages()}>Add images</Button>
+        <Button onClick={() => void pickImages()}>Select images</Button>
       )}
 
       {state.kind === "staging" && (
@@ -338,8 +328,8 @@ export function ImageFormatConverter() {
             >
               Convert
             </Button>
-            <Button variant="outline" onClick={() => void addImages()}>
-              Add more images
+            <Button variant="outline" onClick={() => void pickImages()}>
+              Select different images
             </Button>
           </div>
         </div>
