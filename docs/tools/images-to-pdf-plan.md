@@ -2,7 +2,7 @@
 
 > Ephemeral working doc. Deleted when the tool ships, alongside [images-to-pdf.md](images-to-pdf.md). The brief is the *what*; this is the *how* and the *where we are*. Update inline as commits land — tick boxes, append notes, record blockers. Architectural decisions that emerge mid-build go to [../../DECISIONS.md](../../DECISIONS.md), not this file.
 
-**Status:** 2026-05-22 — Phase E5 complete (10 component tests, 41/41 vitest). Phase E gate met on automated checks; manual `pnpm tauri dev` smoke not possible from Claude (no interactive UI) — flagging for human smoke before/after Phase F. Phase F (registry + Playwright happy path) next.
+**Status:** 2026-05-22 — F1 complete (registry entry + Dashboard test). F2 (Playwright happy path) next.
 
 ## Conventions for this doc
 
@@ -133,9 +133,8 @@ Goal: tool view with staging area, reorder, add-more, remove, and the Create-PDF
 
 ## Phase F — Registry + e2e
 
-- [ ] **F1. `feat(images-to-pdf): register in src/tools/registry.ts + Dashboard test update`**
-  - Add import + entry to [src/tools/registry.ts](../../src/tools/registry.ts). Update [src/app/Dashboard.test.tsx](../../src/app/Dashboard.test.tsx) to assert the new tile.
-  - This is the only edit to shared frontend files (modulo registry-shaped tests).
+- [x] **F1. `feat(images-to-pdf): register in src/tools/registry.ts + Dashboard test update`**
+  - Added `imagesToPdfTool` import + array entry in [src/tools/registry.ts](../../src/tools/registry.ts) (tools listed alphabetically: images-to-pdf first). [src/app/Dashboard.test.tsx](../../src/app/Dashboard.test.tsx) gains a second `getByRole("link", { name: /images → pdf/i })` assertion alongside the existing PDF→Images one. Only edit to a shared frontend file in the whole tool addition (modulo registry-shaped tests).
 
 - [ ] **F2. `test(e2e): images-to-pdf happy path`**
   - New Playwright spec: dashboard → tile → pick (mocked) → staging → reorder one item → Create PDF → done. Failure paths stay at the unit level.
@@ -164,6 +163,7 @@ Goal: tool view with staging area, reorder, add-more, remove, and the Create-PDF
 
 *(One line per noteworthy event: phase boundary, discovery moment, scope shift. Newest first.)*
 
+- 2026-05-22 — F1 landed: registry import + array entry; Dashboard test asserts the new tile. 41/41 vitest still green.
 - 2026-05-22 — E5 landed: 10 Vitest cases on `ImagesToPdf.test.tsx` covering idle defaults, picker → staging, picker-cancel, filename-ascending sort + output preview, ×-remove + empty → idle, page-size default + forward, progress text, error envelope folded into staging, Cancel aborts the signal, revealInFolder on done. Small "Output: {first_stem}.pdf" preview added to staging (sort + reorder coverage hook). 41/41 vitest, typecheck + lint + format clean. Manual `pnpm tauri dev` smoke deferred to human review — Claude can't drive the GUI.
 - 2026-05-22 — E4 landed: page-size radio (Auto-fit / A4 / Letter) + Create PDF wiring through running → done with `<JobProgress label="image" />`. Error folded into `staging` with optional `error` field so the items list is preserved per the brief. "Open output folder" calls `revealInFolder(output_path)`; "Convert another" resets to idle + restores default page size. AbortController pattern matches PdfToImages. 31/31 vitest, typecheck + lint + format clean. (E5 component tests next, then manual smoke at the phase exit gate.)
 - 2026-05-22 — E3 landed: thumbnail grid via @dnd-kit/sortable, mouse + keyboard reorder, per-card × remove (with stopPropagation), add-more appends + re-sorts, empty list → idle. Items wrapped as `{ id: uuid, path }` so duplicate paths work (brief explicitly allows). Inline transform string instead of pulling in @dnd-kit/utilities — keeps the dnd-kit dep count at the two B3 planned for. 31/31 vitest still green, typecheck + lint clean.
