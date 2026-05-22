@@ -14,7 +14,6 @@ import {
   sortableKeyboardCoordinates,
   useSortable,
 } from "@dnd-kit/sortable";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { JobProgress } from "@/components/JobProgress";
@@ -23,6 +22,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   allowImagePreview,
+  imageAssetUrl,
   pickImageFiles,
   revealInFolder,
 } from "@/lib/system";
@@ -95,6 +95,8 @@ function ThumbCard({ item, onRemove }: ThumbCardProps) {
   // Inline transform serialization — avoids pulling in `@dnd-kit/utilities`
   // just for `CSS.Transform.toString`. `transform` is `{ x, y, scaleX,
   // scaleY }` from useSortable; we only need translate for a sortable grid.
+  // The image src goes through `imageAssetUrl` (a `src/lib/system.ts`
+  // wrapper around Tauri's convertFileSrc) so Playwright can mock it.
   const style: React.CSSProperties = {
     transform: transform
       ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
@@ -119,7 +121,7 @@ function ThumbCard({ item, onRemove }: ThumbCardProps) {
         className="flex w-full flex-1 cursor-grab flex-col items-center gap-2 p-2 active:cursor-grabbing focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <img
-          src={convertFileSrc(item.path)}
+          src={imageAssetUrl(item.path)}
           alt=""
           draggable={false}
           className="h-24 w-full rounded object-contain"

@@ -7,13 +7,13 @@ const {
   pickImageFilesMock,
   allowImagePreviewMock,
   revealInFolderMock,
-  convertFileSrcMock,
+  imageAssetUrlMock,
 } = vi.hoisted(() => ({
   convertMock: vi.fn(),
   pickImageFilesMock: vi.fn(),
   allowImagePreviewMock: vi.fn(),
   revealInFolderMock: vi.fn(),
-  convertFileSrcMock: vi.fn((path: string) => `asset://${path}`),
+  imageAssetUrlMock: vi.fn((path: string) => `asset://${path}`),
 }));
 
 vi.mock("@/lib/tools/imagesToPdf", () => ({
@@ -23,9 +23,7 @@ vi.mock("@/lib/system", () => ({
   pickImageFiles: pickImageFilesMock,
   allowImagePreview: allowImagePreviewMock,
   revealInFolder: revealInFolderMock,
-}));
-vi.mock("@tauri-apps/api/core", () => ({
-  convertFileSrc: convertFileSrcMock,
+  imageAssetUrl: imageAssetUrlMock,
 }));
 
 import { ImagesToPdf } from "./ImagesToPdf";

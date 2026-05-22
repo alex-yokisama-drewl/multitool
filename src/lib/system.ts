@@ -3,9 +3,21 @@
 // Components stay presentational and Playwright mocks the OS-touching calls
 // at this seam — same pattern as the per-tool IPC wrappers in `./tools/`.
 
-import { invoke } from "@tauri-apps/api/core";
+import {
+  convertFileSrc as rawConvertFileSrc,
+  invoke,
+} from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
+
+// Wrap convertFileSrc so all `@tauri-apps/api` access happens at the
+// system.ts seam — same pattern as the picker / opener wrappers. The
+// Playwright mock under `tests/e2e/mocks/system.ts` returns a placeholder
+// URL since Tauri's `__TAURI_INTERNALS__` global isn't available in a
+// regular Chromium.
+export function imageAssetUrl(path: string): string {
+  return rawConvertFileSrc(path);
+}
 
 export async function pickPdfFile(): Promise<string | null> {
   const result = await open({
