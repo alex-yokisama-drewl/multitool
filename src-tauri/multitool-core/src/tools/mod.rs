@@ -9,5 +9,6 @@
 //! registry on this side. The registry pattern is enforced on the shell side
 //! (`src-tauri/src/tools/mod.rs::register_commands`).
 
+pub mod image_format_converter;
 pub mod images_to_pdf;
 pub mod pdf_to_images;

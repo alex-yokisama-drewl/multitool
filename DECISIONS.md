@@ -4,6 +4,16 @@ Choices, caveats, and recipes that affect future work — patterns we must keep 
 
 ---
 
+## 2026-05-22 — WebP output is lossless only (no `webp_quality` option)
+
+`image` 0.25's WebP encoder (`image::codecs::webp::WebPEncoder::new_lossless`) is lossless-only — it exposes no quality knob. The image-format-converter tool reflects this: there is no `webp_quality` field in `Opts`, and `TargetFormat::Webp` always emits lossless WebP. Decode handles both lossy and lossless WebP inputs unchanged (decoder feature parity isn't the constraint).
+
+A lossy WebP encode lane would require switching to the `webp` crate (libwebp C bindings + a native build dep on every CI runner) or `image-webp` (pure Rust but encoder-only-lossless at last check). Neither's worth the dep + matrix cost while no user has asked for lossy WebP output.
+
+If a future tool needs lossy WebP, the right move is a `DECISIONS.md` entry weighing the libwebp dep and adding it to `multitool-core` — not adding a silent quality field that gets ignored.
+
+---
+
 ## 2026-05-22 — Staging-area reorder: `@dnd-kit/sortable` over native HTML5 / react-beautiful-dnd
 
 Images → PDF stages picked images in a grid the user reorders before generating the PDF. The brief requires both mouse AND keyboard reorder, so the drag-and-drop choice has to be accessible from day one. Picked `@dnd-kit/sortable` (+ `@dnd-kit/core` peer).

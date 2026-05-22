@@ -16,10 +16,24 @@ tokio-util = "0.7"
 # `build.rs`. Bumping one without the other is a footgun — keep them in lockstep.
 pdfium-render = "0.9"
 # `image` arrives transitively via pdfium-render's `image_025` default feature.
-# Declared here too so convert.rs (C3) can use `image` types without leaning on
-# pdfium-render's re-exports. `webp` is needed by images-to-pdf for the .webp
-# input format from the brief; png + jpeg cover both tools' encode paths.
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+# Declared here too so convert.rs can use `image` types without leaning on
+# pdfium-render's re-exports.
+#
+# Feature set covers every format the image-format-converter accepts on input
+# (png/jpeg/webp/bmp/tiff/gif/ico/tga/pnm/qoi) plus every format it emits on
+# output (png/jpeg/webp/bmp/tiff). images-to-pdf only needs png/jpeg/webp and
+# pdf-to-images only needs png/jpeg, but enabling extras in one crate is
+# cheaper than fragmenting feature sets per-tool.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "tiff", "gif", "ico", "tga", "pnm", "qoi"] }
+# SVG input for image-format-converter. `default-features = false` strips the
+# system-fonts / memmap-fonts / raster-images flags we don't need — system
+# fonts in particular would (a) cost cross-platform consistency and (b) pull
+# in fontconfig on Linux, which is not a dep we want to inherit. `text` stays
+# on so SVG text nodes still get a path through usvg (rendered glyphless with
+# no fontdb populated; the converter surfaces a per-file warning when text is
+# present). resvg re-exports `tiny_skia` so a separate dep isn't needed.
+resvg = { version = "0.47", default-features = false, features = ["text"] }
+usvg = { version = "0.47", default-features = false, features = ["text"] }
 # PDF assembly for images-to-pdf. Default features pull in printpdf's HTML +
 # layout pipeline (azul-layout, kuchiki, rust-fontconfig) which we don't use —
 # image-only PDFs go through ImageXObject directly, so the lean build is fine.
