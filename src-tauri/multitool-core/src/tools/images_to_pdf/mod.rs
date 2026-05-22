@@ -9,5 +9,7 @@
 //! `docs/tools/images-to-pdf-plan.md`.
 
 mod convert;
+mod job;
 
 pub use convert::{convert, JobSummary, Opts, PageProgress, PageSize};
+pub use job::{run_job, JobResult, Progress};

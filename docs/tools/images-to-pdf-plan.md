@@ -2,7 +2,7 @@
 
 > Ephemeral working doc. Deleted when the tool ships, alongside [images-to-pdf.md](images-to-pdf.md). The brief is the *what*; this is the *how* and the *where we are*. Update inline as commits land — tick boxes, append notes, record blockers. Architectural decisions that emerge mid-build go to [../../DECISIONS.md](../../DECISIONS.md), not this file.
 
-**Status:** 2026-05-22 — Phase C1 complete (convert fn + 12 unit tests, 92% line cov on `convert.rs`). C2 (orchestrator `job.rs`) next.
+**Status:** 2026-05-22 — Phase C complete. C1 (convert) + C2 (job orchestrator) merged with 22 unit tests; convert.rs at 92.26% line cov, job.rs at 89.95%. Phase D (Rust shell) next.
 
 ## Conventions for this doc
 
@@ -71,12 +71,13 @@ Goal: pure conversion + orchestrator with full unit-test coverage, no Tauri impo
   - Uses `printpdf 0.7` with `default-features = false` (avoid the HTML/azul pipeline). `ImageXObject` built directly from `image::DynamicImage::into_rgb8` raw bytes, so the printpdf-internal `image 0.24` vs our `image 0.25` doesn't matter.
   - 12 unit tests cover: each `PageSize`, EXIF rotation (orientation 6 swaps wide→tall), cancellation between + before, `on_page` halts, `UnsupportedFormat` on garbage bytes, `ProcessingFailed` on empty slice, webp input round-trips. **92.26% line cov on `convert.rs`** (gate ≥80%).
 
-- [ ] **C2. `feat(images-to-pdf): orchestrator job.rs + tests`**
-  - New `multitool-core/src/tools/images_to_pdf/job.rs`. Reads each path, threads bytes into `convert`, writes the final PDF via `unique_path({first_image_dir}/{first_stem}.pdf)`.
-  - **Partial-cleanup on cancel:** if `convert` returns `Cancelled`, delete the partial PDF if it was created. The PDF→Images orchestrator keeps partial output; we don't, because a half-PDF is useless.
-  - Tests: happy path, cancellation deletes partial output, missing input → `FileNotFound`, typed-error propagation, `unique_path` collision.
+- [x] **C2. `feat(images-to-pdf): orchestrator job.rs + tests`**
+  - New `multitool-core/src/tools/images_to_pdf/job.rs`. Reads each input path into memory, hands `&[(PathBuf, Vec<u8>)]` to `convert`, then writes the returned PDF bytes to `unique_path({first_image_parent}/{first_image_stem}.pdf)`. Pre-read cancel-check + the cancel-check inside `convert` between images give two opportunities to bail.
+  - **Partial-cleanup on cancel:** satisfied by construction. Because the orchestrator only writes after `convert` returns the full PDF bytes, no output file is ever created on the `Cancelled` (or any other error) path — there is no partial to delete. The plan's original "delete the partial PDF if it was created" reads as a fallback for a writer-arg design; with bytes-back-to-caller it's redundant.
+  - `Progress { image: u32, total: u32 }` (1-based, matches "image N / total" UX copy). `JobResult { output_path, page_count, duration_ms }`.
+  - 10 tests: happy path (2 images, on-disk file, progress order), first-image-dir wins with mixed-folder inputs, missing input → `FileNotFound`, pre-cancel → no output file, mid-convert cancel → no output file, `unique_path` collision leaves existing untouched, on_progress halts + no output, `UnsupportedFormat` propagation from convert + no output, empty slice → `ProcessingFailed`, `derive_output_path` path-math cases.
 
-**Phase C exit gate:** `cargo test -p multitool-core --all-targets` green + `cargo llvm-cov --summary-only -p multitool-core` shows ≥80% on `convert.rs`.
+**Phase C exit gate:** `cargo test -p multitool-core --all-targets` (54 tests) and `cargo llvm-cov --summary-only -p multitool-core` (convert.rs 92.26%, job.rs 89.95%) both green.
 
 ---
 
@@ -157,6 +158,7 @@ Goal: tool view with staging area, reorder, add-more, remove, and the Create-PDF
 
 *(One line per noteworthy event: phase boundary, discovery moment, scope shift. Newest first.)*
 
+- 2026-05-22 — C2 landed: `multitool-core/src/tools/images_to_pdf/job.rs` with `run_job()`, `Progress { image, total }`, `JobResult`. 10 unit tests; job.rs at 89.95% line cov. Phase C exit gate met (54 tests green across multitool-core; convert.rs 92.26%, job.rs 89.95%). **Design note:** the plan's "delete the partial PDF on cancel" simplified to "never create one" — because `convert` returns bytes to the caller and the orchestrator writes only after success, no partial PDF ever exists. Recorded in the C2 checkbox text so future readers don't go looking for the delete logic.
 - 2026-05-22 — C1 landed: `multitool-core/src/tools/images_to_pdf/{mod.rs, convert.rs}` with `convert()` returning `Result<(Vec<u8>, JobSummary), AppError>` (bytes back to caller — keeps disk I/O in C2's orchestrator and means cancel never leaves a partial PDF). printpdf 0.7 with `default-features = false`, image gains `webp` feature. EXIF orientation honored via decoder.orientation() + apply_orientation; rotated.jpg fixture (orientation 6) verifies the wide→tall swap. 12 unit tests, 92.26% line cov on convert.rs (gate ≥80%). Phase C exit gate not yet met — C2 still pending.
 - 2026-05-22 — B3 landed: `@dnd-kit/sortable` + `@dnd-kit/core` added. DECISIONS entry "Staging-area reorder: @dnd-kit/sortable over native HTML5 / react-beautiful-dnd" recorded (a11y mandate + react-beautiful-dnd archived + dep-discipline trade-off acknowledged). Phase B exit gate green (`pnpm tauri build --no-bundle` confirms no wedge from the new deps).
 - 2026-05-22 — **Discovery + B2 landed.** Brief's "fs:asset" was a misnomer (no such Tauri 2.x permission); real grant is `app.security.assetProtocol` in `tauri.conf.json`. Dynamic per-pick IS supported via `Manager::asset_protocol_scope().allow_file(...)`. Picked dynamic. New `allow_image_preview` command validates extensions server-side and calls `allow_file` per picked path. Required adding `protocol-asset` to the `tauri` crate features. DECISIONS entry recorded. Frontend wrapper deferred to E2. Exit gate green (rust fmt/clippy/test + `pnpm tauri build --no-bundle` + frontend lint/typecheck).
