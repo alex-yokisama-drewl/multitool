@@ -70,9 +70,11 @@ pub struct JobResult {
     pub success_count: u32,
     pub skip_count: u32,
     pub skipped: Vec<SkippedFile>,
-    /// Directory holding the first successful output (handy for "reveal in
-    /// folder" UX). `None` when no file succeeded.
-    pub first_output_dir: Option<PathBuf>,
+    /// Full path of the first successful output file (handy for "reveal in
+    /// folder" UX — pass it straight to `revealItemInDir`, which opens the
+    /// parent directory and highlights the file). `None` when no file
+    /// succeeded.
+    pub first_output_path: Option<PathBuf>,
     pub duration_ms: u64,
 }
 
@@ -103,7 +105,7 @@ where
 
     let mut success_count: u32 = 0;
     let mut skipped: Vec<SkippedFile> = Vec::new();
-    let mut first_output_dir: Option<PathBuf> = None;
+    let mut first_output_path: Option<PathBuf> = None;
 
     for (idx, source) in inputs.iter().enumerate() {
         let index = u32::try_from(idx).unwrap_or(u32::MAX);
@@ -120,10 +122,8 @@ where
         match process_one(source, opts) {
             Ok((output, warnings)) => {
                 success_count = success_count.saturating_add(1);
-                if first_output_dir.is_none() {
-                    if let Some(parent) = output.parent() {
-                        first_output_dir = Some(parent.to_path_buf());
-                    }
+                if first_output_path.is_none() {
+                    first_output_path = Some(output.clone());
                 }
                 on_progress(Progress::Succeeded {
                     index,
@@ -152,7 +152,7 @@ where
         success_count,
         skip_count: u32::try_from(skipped.len()).unwrap_or(u32::MAX),
         skipped,
-        first_output_dir,
+        first_output_path,
         duration_ms: u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
     })
 }
@@ -258,7 +258,12 @@ mod tests {
         assert_eq!(result.success_count, 3);
         assert_eq!(result.skip_count, 0);
         assert!(result.skipped.is_empty());
-        assert_eq!(result.first_output_dir.as_deref(), Some(dir.path()));
+        // first_output_path is the FILE, not the directory. Asserting it
+        // lives under the input dir is enough; the orchestrator picks the
+        // first successful Succeeded.output.
+        let first = result.first_output_path.as_deref().expect("first output");
+        assert_eq!(first.parent(), Some(dir.path()));
+        assert!(first.exists(), "{first:?} should exist");
 
         // 3 inputs × 2 events (Started + Succeeded) = 6 events.
         assert_eq!(events.borrow().len(), 6);

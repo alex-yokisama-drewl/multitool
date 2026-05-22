@@ -29,6 +29,7 @@ export async function convertImageFormat(
   { onProgress, signal }: ConvertHooks = {},
 ): Promise<JobResult> {
   signal?.throwIfAborted();
+  let firstOutput: string | null = null;
   for (let index = 0; index < paths.length; index++) {
     const source = paths[index] ?? "";
     await new Promise((resolve) => setTimeout(resolve, 30));
@@ -42,12 +43,14 @@ export async function convertImageFormat(
       total: paths.length,
       source,
     });
+    const output = `${MOCK_OUTPUT_DIR}/converted-${String(index)}.png`;
+    firstOutput ??= output;
     onProgress?.({
       kind: "succeeded",
       index,
       total: paths.length,
       source,
-      output: `${MOCK_OUTPUT_DIR}/converted-${String(index)}.png`,
+      output,
       warnings: [],
     });
   }
@@ -55,7 +58,7 @@ export async function convertImageFormat(
     success_count: paths.length,
     skip_count: 0,
     skipped: [],
-    first_output_dir: MOCK_OUTPUT_DIR,
+    first_output_path: firstOutput,
     duration_ms: 30 * paths.length,
   };
 }

@@ -30,7 +30,7 @@ const okResult = {
   success_count: 2,
   skip_count: 0,
   skipped: [],
-  first_output_dir: "/tmp",
+  first_output_path: "/tmp/a.jpg",
   duration_ms: 13,
 };
 

@@ -67,7 +67,6 @@ The project intentionally stays in the `0.x` pre-release range. There is no plan
 Not committed to a milestone; record so they don't get lost.
 
 - **Paste-from-clipboard for image inputs.** Any tool that accepts images should allow pasting (Ctrl/Cmd+V) directly — screenshots in particular. Likely a shared input affordance rather than per-tool.
-- **Image format converter.** A future tool to convert between image formats. Details TBD when it gets built.
 - **Doc consolidation.** Once the dashboard redesign settles and the only foreseeable future work is adding tools, fold [DECISIONS.md](DECISIONS.md) into [ARCHITECTURE.md](ARCHITECTURE.md) as a single technical doc.
 
 ## 8. Open Questions
