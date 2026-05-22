@@ -17,7 +17,9 @@ use std::path::Path;
 
 use image::codecs::jpeg::JpegEncoder;
 use image::metadata::Orientation;
-use image::{DynamicImage, ImageDecoder, ImageError, ImageFormat, ImageReader, RgbImage};
+use image::{
+    AnimationDecoder, DynamicImage, ImageDecoder, ImageError, ImageFormat, ImageReader, RgbImage,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
@@ -143,12 +145,33 @@ pub(crate) const SVG_PX_MAX: u32 = 8192;
 /// Cancellation is the orchestrator's responsibility; this fn is a small,
 /// CPU-bound transform without internal cancel checkpoints.
 pub fn convert_one(source_ext: &str, input_bytes: &[u8], opts: &Opts) -> AppResult<EncodedFile> {
+    let mut warnings: Vec<String> = Vec::new();
     let img = if source_ext.eq_ignore_ascii_case("svg") {
-        rasterize_svg(input_bytes, opts.svg_raster_size)?
+        rasterize_svg(input_bytes, opts.svg_raster_size, &mut warnings)?
     } else {
+        if source_ext.eq_ignore_ascii_case("gif") && is_animated_gif(input_bytes) {
+            warnings.push("animated GIF; converted first frame only".into());
+        }
         decode_with_orientation(source_ext, input_bytes)?
     };
-    encode_raster(&img, opts)
+    let mut encoded = encode_raster(&img, opts)?;
+    encoded.warnings = warnings;
+    Ok(encoded)
+}
+
+/// Cheap check for whether `bytes` contain more than one GIF frame. Returns
+/// `false` for non-GIF inputs, malformed GIFs, or single-frame GIFs.
+///
+/// Uses `image::AnimationDecoder::into_frames().take(2).count()` — decodes
+/// at most two frames' pixel data, which is acceptable for the small GIFs
+/// users typically pick. A byte-level magic + Image-Descriptor scan would
+/// be faster but isn't worth the parser maintenance burden for a per-file
+/// detection that's already O(1) in the file count.
+fn is_animated_gif(bytes: &[u8]) -> bool {
+    use image::codecs::gif::GifDecoder;
+    GifDecoder::new(Cursor::new(bytes))
+        .map(|d| d.into_frames().take(2).count() > 1)
+        .unwrap_or(false)
 }
 
 /// Decode `bytes` and apply any EXIF orientation tag the decoder exposes.
@@ -205,9 +228,22 @@ fn decode_with_orientation(source_ext: &str, bytes: &[u8]) -> AppResult<DynamicI
 /// - `AppError::ProcessingFailed` if the target pixmap can't be allocated.
 ///
 /// Fonts: an empty `fontdb` is passed; text nodes parse and route through
-/// usvg's text pipeline but render glyphless (no fonts loaded). Phase A6
-/// adds the "SVG references fonts" warning when text nodes are present.
-fn rasterize_svg(bytes: &[u8], size_policy: SvgRasterSize) -> AppResult<DynamicImage> {
+/// usvg's text pipeline but render glyphless (no fonts loaded). A per-file
+/// warning is appended to `warnings` when text nodes are detected so the UI
+/// can flag "text may not render".
+fn rasterize_svg(
+    bytes: &[u8],
+    size_policy: SvgRasterSize,
+    warnings: &mut Vec<String>,
+) -> AppResult<DynamicImage> {
+    // Detect text elements BEFORE handing bytes to usvg — usvg with the
+    // `text` feature may convert `<text>` to paths during parse (so the
+    // resulting tree no longer has a `Node::Text` variant). A simple byte
+    // scan is independent of usvg's internal representation. False
+    // positives are tolerated: the warning is informational.
+    if svg_bytes_contain_text_element(bytes) {
+        warnings.push("SVG references fonts; text may not render".into());
+    }
     let tree = usvg::Tree::from_data(bytes, &usvg::Options::default()).map_err(|err| {
         AppError::UnsupportedFormat {
             detail: format!("SVG parse: {err}"),
@@ -255,6 +291,25 @@ fn rasterize_svg(bytes: &[u8], size_policy: SvgRasterSize) -> AppResult<DynamicI
         &mut pixmap.as_mut(),
     );
     Ok(DynamicImage::ImageRgba8(pixmap_to_rgba_image(&pixmap)))
+}
+
+/// Heuristic: does the SVG source contain a `<text>` or `<tspan>` element?
+///
+/// Run against the raw bytes BEFORE handing them to `usvg`. The `text`
+/// feature in usvg converts text elements to paths during parse (when the
+/// `fontdb` permits), so by the time the parsed `Tree` is in hand the text
+/// nodes have been lowered and aren't directly visible. Byte-scanning the
+/// source keeps the detection independent of usvg's lowering pass.
+///
+/// Tolerates false positives (e.g. matches inside a CDATA / comment) — the
+/// warning is informational, not load-bearing.
+fn svg_bytes_contain_text_element(bytes: &[u8]) -> bool {
+    let Ok(s) = std::str::from_utf8(bytes) else {
+        return false;
+    };
+    // `<text ` / `<text>` / `<tspan ` / `<tspan>`. Cheap-enough sequential
+    // scan; SVGs are typically a few KB.
+    s.contains("<text ") || s.contains("<text>") || s.contains("<tspan ") || s.contains("<tspan>")
 }
 
 /// Convert a `resvg::tiny_skia::Pixmap` (RGBA8, premultiplied) into an
@@ -680,6 +735,62 @@ mod tests {
         let out = convert_one("svg", &format_fixture("tiny.svg"), &o)
             .expect("SVG → JPEG via alpha flatten");
         assert_round_trip(&out.bytes, ImageFormat::Jpeg, 100, 50);
+    }
+
+    // --- Per-file warnings (Phase A6) ---
+
+    #[test]
+    fn animated_gif_input_emits_first_frame_warning() {
+        let out = convert_one(
+            "gif",
+            &format_fixture("animated.gif"),
+            &opts(TargetFormat::Png),
+        )
+        .expect("animated GIF → PNG");
+        assert_round_trip(&out.bytes, ImageFormat::Png, 8, 8);
+        assert!(
+            out.warnings.iter().any(|w| w.contains("animated GIF")),
+            "expected animated-GIF warning, got {:?}",
+            out.warnings
+        );
+    }
+
+    #[test]
+    fn static_gif_input_emits_no_animation_warning() {
+        let out = convert_one("gif", &format_fixture("tiny.gif"), &opts(TargetFormat::Png))
+            .expect("static GIF → PNG");
+        assert!(
+            out.warnings.is_empty(),
+            "static GIF should have no warnings, got {:?}",
+            out.warnings
+        );
+    }
+
+    #[test]
+    fn svg_with_text_emits_font_warning() {
+        let mut o = opts(TargetFormat::Png);
+        o.svg_raster_size = SvgRasterSize::Natural;
+        let out =
+            convert_one("svg", &format_fixture("tiny-text.svg"), &o).expect("SVG with text → PNG");
+        assert!(
+            out.warnings
+                .iter()
+                .any(|w| w.contains("text may not render")),
+            "expected SVG-text warning, got {:?}",
+            out.warnings
+        );
+    }
+
+    #[test]
+    fn svg_without_text_emits_no_warning() {
+        let mut o = opts(TargetFormat::Png);
+        o.svg_raster_size = SvgRasterSize::Natural;
+        let out = convert_one("svg", &format_fixture("tiny.svg"), &o).expect("plain SVG → PNG");
+        assert!(
+            out.warnings.is_empty(),
+            "plain SVG should have no warnings, got {:?}",
+            out.warnings
+        );
     }
 
     #[test]
