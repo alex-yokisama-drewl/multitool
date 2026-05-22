@@ -14,7 +14,7 @@ Outputs are raster only (no tracing). Inputs are broader: anything decodable, in
 | --- | --- | --- | --- |
 | PNG    | ✅ | ✅ | Lossless. 8-bit and 16-bit decode; encode is 8-bit. |
 | JPEG   | ✅ | ✅ | Lossy. No alpha channel — see [Alpha handling](#alpha-handling). |
-| WebP   | ✅ | ✅ | Lossy by default; quality=100 → lossless. Alpha supported. |
+| WebP   | ✅ | ✅ | **Output is lossless only** (the `image` 0.25 encoder doesn't expose a lossy mode; lossy WebP would need libwebp). Alpha supported. Decode handles both lossy and lossless WebP inputs. |
 | BMP    | ✅ | ✅ | Uncompressed. No alpha in encoder (see alpha handling). |
 | TIFF   | ✅ | ✅ | Lossless. Single-image; multi-page TIFFs decode the first image only. |
 | GIF    | ✅ | ❌ | Input only. Animated GIFs decode the **first frame** with a UI warning; output GIF deferred (single-palette encoder constraints aren't worth handling now — animated decomposition could be a separate tool later). |
@@ -47,7 +47,6 @@ Outputs are raster only (no tracing). Inputs are broader: anything decodable, in
 | --- | --- | --- | --- |
 | `target_format` | enum (`png` \| `jpeg` \| `webp` \| `bmp` \| `tiff`) | `png` | Single dropdown; applies to all staged inputs. |
 | `jpeg_quality` | `u8` ∈ [1, 100] | `85` | Shown only when `target_format == jpeg`. |
-| `webp_quality` | `u8` ∈ [1, 100] | `80` | Shown only when `target_format == webp`. `100` = lossless. |
 | `alpha_handling` | enum (`preserve` \| `flatten-white` \| `flatten-black`) | `flatten-white` | Applied **only** when the target format lacks alpha (JPEG, BMP); silently ignored otherwise. `preserve` for an alpha-less target means: skip the file with a `ProcessingFailed` reported in the [batch error list](#batch-error-policy) — explicit refusal beats accidental flattening. |
 | `svg_raster_size` | enum (`natural` \| `longest-edge-px:N`) | `longest-edge-px:1024` | Used only for SVG inputs. `natural` honors the SVG's `width`/`height`; `longest-edge-px:N` scales so the longest side is exactly N pixels (1 ≤ N ≤ 8192, clamped). UI hides this option when no staged input is `.svg`. |
 

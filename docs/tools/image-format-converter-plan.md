@@ -80,4 +80,8 @@ Run this as a separate exploratory PR. Do not block the tool's ship on it.
 
 ## Notes & mid-build addenda
 
-> Append notes here as the build progresses. Things like: "A3 split into A3a / A3b because alpha handling tests grew", "WebP encoding lossless mode needs feature `webp-encoder` not just `webp`", "switched the row-remove animation off because the `<StagingList>` extraction made it cheaper to drop", etc. Better to over-share than to leave a follow-on session guessing.
+> Append notes here as the build progresses. Things like: "A3 split into A3a / A3b because alpha handling tests grew", "switched the row-remove animation off because the `<StagingList>` extraction made it cheaper to drop", etc. Better to over-share than to leave a follow-on session guessing.
+
+- **2026-05-22 (A2):** `image` 0.25's WebP encoder is **lossless only** — no quality knob. Dropped `webp_quality` from `Opts` and the assignment brief's Options table; documented on `TargetFormat::Webp`. A lossy WebP lane would require the `webp` crate (libwebp C bindings) and a native build dep — not in scope. Captured as a one-liner in `DECISIONS.md`.
+- **2026-05-22 (A2):** TGA has no reliable magic bytes, so `image::ImageReader::with_guessed_format()` returns no format for `.tga` inputs. Worked around by falling back to `ImageFormat::from_extension(source_ext)` when bytes-sniffing comes back inconclusive. The extension is the **fallback**, not the override — a `.tga` file containing PNG data still gets the right decoder.
+- **2026-05-22 (A2):** Fixtures generated via ffmpeg (`tiny.bmp`, `tiny.tif`, `tiny.gif`, `tiny.ico`, `tiny.tga`, `tiny.pgm`) and a one-off `cargo run` using `image` crate (`tiny.qoi`). Total ~40 KB, well under the [100 KB per-tool fixture budget](../../DECISIONS.md → "Test fixtures"). SVG fixtures land in A4; alpha-PNG fixture lands in A3; animated-GIF fixture lands in A6.
