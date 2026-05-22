@@ -2,7 +2,7 @@
 
 > Ephemeral working doc. Deleted when the tool ships, alongside [images-to-pdf.md](images-to-pdf.md). The brief is the *what*; this is the *how* and the *where we are*. Update inline as commits land — tick boxes, append notes, record blockers. Architectural decisions that emerge mid-build go to [../../DECISIONS.md](../../DECISIONS.md), not this file.
 
-**Status:** 2026-05-22 — Phase E3 complete (thumbnail grid via @dnd-kit/sortable with mouse + keyboard reorder, per-card remove, add-more, empty-after-removal → idle). E4 (page-size + Create PDF flow) next.
+**Status:** 2026-05-22 — Phase E4 complete (page-size selector + Create PDF + running/done; error folded into staging). E5 (component tests) + manual smoke + registry next.
 
 ## Conventions for this doc
 
@@ -117,10 +117,11 @@ Goal: tool view with staging area, reorder, add-more, remove, and the Create-PDF
   - Add-more appends new items + re-sorts; remove dropping last item → `idle`.
   - CSS transform serialized inline (`translate3d(${x}px, ${y}px, 0)`) — avoids adding `@dnd-kit/utilities` as a third dnd-kit dep beyond the two B3 planned for.
 
-- [ ] **E4. `feat(images-to-pdf): page-size option + Create PDF + progress/done/error`**
-  - Page-size radio group (`auto-fit` / `a4` / `letter`).
-  - "Create PDF" calls the wrapper, transitions through `running` → `done | error`. Reuses `<JobProgress>` from Phase A. Error state preserves the staging list per the brief.
-  - "Open output folder" + "Convert another" on `done`.
+- [x] **E4. `feat(images-to-pdf): page-size option + Create PDF + progress/done/error`**
+  - Page-size radio group below the grid (`Auto-fit (per image)` / `A4` / `Letter`); `pageSize` lives in its own `useState` so the selection survives error → staging round-trips.
+  - "Create PDF" calls `convertImagesToPdf` with `items.map(path)` + `{ page_size }`. State machine adds `running` (reuses `<JobProgress label="image" />`) → `done` (path display + "Open output folder" via `revealInFolder` + "Convert another" via reset).
+  - Error path folded into `staging` (added optional `error: AppErrorEnvelope` field) so the items list is preserved and the user can retry without re-picking — the brief's "kept in staging state" rule. Cancellation surfaces as a Cancelled envelope through the same path; a follow-up polish could suppress that specific kind from the alert.
+  - `Create PDF` disabled when items is empty (defensive; staging is unreachable with zero items, but keeps the button's disabled-state contract obvious).
 
 - [ ] **E5. `feat(images-to-pdf): React component tests`**
   - Vitest + Testing Library: defaults render, picker → staging transition, reorder updates output-name preview, remove control, empty-list → idle, options forwarded, progress text renders, error envelope renders, Cancel aborts the signal. Mock `@/lib/*`.
@@ -162,6 +163,7 @@ Goal: tool view with staging area, reorder, add-more, remove, and the Create-PDF
 
 *(One line per noteworthy event: phase boundary, discovery moment, scope shift. Newest first.)*
 
+- 2026-05-22 — E4 landed: page-size radio (Auto-fit / A4 / Letter) + Create PDF wiring through running → done with `<JobProgress label="image" />`. Error folded into `staging` with optional `error` field so the items list is preserved per the brief. "Open output folder" calls `revealInFolder(output_path)`; "Convert another" resets to idle + restores default page size. AbortController pattern matches PdfToImages. 31/31 vitest, typecheck + lint + format clean. (E5 component tests next, then manual smoke at the phase exit gate.)
 - 2026-05-22 — E3 landed: thumbnail grid via @dnd-kit/sortable, mouse + keyboard reorder, per-card × remove (with stopPropagation), add-more appends + re-sorts, empty list → idle. Items wrapped as `{ id: uuid, path }` so duplicate paths work (brief explicitly allows). Inline transform string instead of pulling in @dnd-kit/utilities — keeps the dnd-kit dep count at the two B3 planned for. 31/31 vitest still green, typecheck + lint clean.
 - 2026-05-22 — E2 landed: `src/tools/images-to-pdf/{index.ts, types.ts, ImagesToPdf.tsx}` (~85 lines total). Idle → staging via picker, add-more, filename-ascending sort on every pick. `allowImagePreview()` wrapper added to `src/lib/system.ts` and called at pick-time (B2 wrapper resolved). Tool deliberately NOT in `registry.ts` yet — that's F1's job. 31/31 vitest still green, typecheck + lint clean.
 - 2026-05-22 — E1 landed: `src/lib/tools/imagesToPdf.ts` (~50 lines) + 7 Vitest cases mirroring the pdfToImages wrapper. PageSize is kebab-case ("auto-fit" / "a4" / "letter") to match the Rust enum's `#[serde(rename_all = "kebab-case")]`; field names verbatim (`page_size`, `output_path`). 31/31 vitest green workspace-wide, typecheck + lint clean.
