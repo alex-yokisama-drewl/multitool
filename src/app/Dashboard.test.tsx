@@ -17,5 +17,8 @@ describe("Dashboard", () => {
     expect(
       screen.getByRole("link", { name: /images → pdf/i }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /image format converter/i }),
+    ).toBeInTheDocument();
   });
 });
