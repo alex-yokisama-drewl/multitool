@@ -17,7 +17,7 @@ use std::path::Path;
 
 use image::codecs::jpeg::JpegEncoder;
 use image::metadata::Orientation;
-use image::{DynamicImage, ImageDecoder, ImageError, ImageFormat, ImageReader};
+use image::{DynamicImage, ImageDecoder, ImageError, ImageFormat, ImageReader, RgbImage};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
@@ -68,7 +68,8 @@ impl TargetFormat {
 }
 
 /// How to handle alpha when the target format can't carry it (JPEG, BMP).
-/// No-op for alpha-supporting targets. Wiring is in Phase A3.
+/// No-op for alpha-supporting targets. Implementation in
+/// [`apply_alpha_handling`] / [`flatten_onto`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum AlphaHandling {
@@ -185,34 +186,111 @@ fn decode_with_orientation(source_ext: &str, bytes: &[u8]) -> AppResult<DynamicI
 
 /// Encode a decoded `DynamicImage` to the target raster format.
 ///
-/// Alpha-handling-aware encode lands in Phase A3 — for now JPEG and BMP go
-/// through `to_rgb8()`, which drops alpha. That's fine for the A2 test
-/// fixtures (all opaque RGB) but would produce wrong colors for transparent
-/// inputs; A3 routes those through the alpha matrix or skips them.
+/// For alpha-supporting targets (PNG / WebP / TIFF) `alpha_handling` is a
+/// no-op — the source alpha rides through unchanged. For alpha-less targets
+/// (JPEG / BMP) we consult [`apply_alpha_handling`] up front: `Preserve`
+/// fails the file (skipped at the orchestrator layer); the `Flatten*` modes
+/// composite RGBA onto a solid background and drop alpha.
 fn encode_raster(img: &DynamicImage, opts: &Opts) -> AppResult<EncodedFile> {
     let mut bytes = Vec::new();
     let warnings = Vec::new();
-
+    let flattened = apply_alpha_handling(img, opts)?;
+    // `flattened` is `Some` only when we composited onto a background — the
+    // result is RGB-only and replaces the RGB pixels going into the encoder.
+    // For PNG / WebP / TIFF, `flattened` is always `None` and `img` flows
+    // through unchanged (alpha preserved).
     match opts.target_format {
         TargetFormat::Jpeg => {
-            // JPEG needs RGB and a quality parameter; image::write_to defaults
-            // to quality=75, so we go through the encoder directly.
             let q = opts.jpeg_quality.clamp(QUALITY_MIN, QUALITY_MAX);
-            let rgb = img.to_rgb8();
+            // If `apply_alpha_handling` returned a flattened buffer, use it;
+            // otherwise the source is already RGB (or RGB-like) so to_rgb8
+            // is a cheap conversion that doesn't lose information.
+            let rgb = flattened.unwrap_or_else(|| img.to_rgb8());
             let mut encoder = JpegEncoder::new_with_quality(&mut bytes, q);
             encoder
                 .encode_image(&rgb)
                 .map_err(|err| image_to_app_err(Path::new(""), err))?;
         }
+        TargetFormat::Bmp => {
+            // BMP encoder in `image` 0.25 accepts RGBA but doesn't store it;
+            // route flattened RGB through `DynamicImage::ImageRgb8` so the
+            // alpha-handling intent shows up in the encoded bytes.
+            let bmp_img = match flattened {
+                Some(rgb) => DynamicImage::ImageRgb8(rgb),
+                None => img.clone(),
+            };
+            bmp_img
+                .write_to(&mut Cursor::new(&mut bytes), ImageFormat::Bmp)
+                .map_err(|err| image_to_app_err(Path::new(""), err))?;
+        }
         format => {
-            // PNG / WebP (lossless) / BMP / TIFF all go through write_to.
-            // Alpha handling for BMP is approximate in A2 — covered in A3.
+            // PNG / WebP (lossless) / TIFF — alpha-supporting targets.
             img.write_to(&mut Cursor::new(&mut bytes), format.image_format())
                 .map_err(|err| image_to_app_err(Path::new(""), err))?;
         }
     }
 
     Ok(EncodedFile { bytes, warnings })
+}
+
+/// Resolve the alpha-handling policy for an alpha-less target.
+///
+/// Returns:
+/// - `Ok(None)` when no action is needed:
+///   - the target supports alpha (PNG / WebP / TIFF), or
+///   - the source has no alpha channel, or
+///   - the source's alpha channel is fully opaque (every pixel α = 255).
+/// - `Ok(Some(RgbImage))` when an alpha-less target needs the source RGBA
+///   composited onto a solid background (`FlattenWhite` / `FlattenBlack`).
+/// - `Err(AppError::ProcessingFailed)` when `Preserve` would silently drop
+///   non-trivial alpha — explicit refusal so the orchestrator can skip the
+///   file with a clear reason.
+fn apply_alpha_handling(img: &DynamicImage, opts: &Opts) -> AppResult<Option<RgbImage>> {
+    if opts.target_format.supports_alpha() {
+        return Ok(None);
+    }
+    if !has_non_trivial_alpha(img) {
+        // Source is effectively opaque; `to_rgb8` is lossless on the visible
+        // channels. No need to walk pixels.
+        return Ok(None);
+    }
+    match opts.alpha_handling {
+        AlphaHandling::Preserve => Err(AppError::ProcessingFailed {
+            detail: "target format does not support alpha; choose a flatten option".into(),
+        }),
+        AlphaHandling::FlattenWhite => Ok(Some(flatten_onto(img, [255, 255, 255]))),
+        AlphaHandling::FlattenBlack => Ok(Some(flatten_onto(img, [0, 0, 0]))),
+    }
+}
+
+/// True iff `img` has an alpha channel AND at least one pixel is not fully
+/// opaque. A fully-opaque RGBA image returns `false` so we don't pay the
+/// flatten cost (or refuse a Preserve-mode encode) for what is effectively
+/// an RGB image.
+fn has_non_trivial_alpha(img: &DynamicImage) -> bool {
+    if !img.color().has_alpha() {
+        return false;
+    }
+    img.to_rgba8().pixels().any(|p| p.0[3] != 255)
+}
+
+/// Composite the source RGBA onto a solid `[r, g, b]` background, returning
+/// an `RgbImage`. Standard non-premultiplied alpha:
+///   out = (α · src + (255 − α) · bg) / 255
+fn flatten_onto(img: &DynamicImage, bg: [u8; 3]) -> RgbImage {
+    let rgba = img.to_rgba8();
+    let mut out = RgbImage::new(rgba.width(), rgba.height());
+    for (px_in, px_out) in rgba.pixels().zip(out.pixels_mut()) {
+        let [r, g, b, a] = px_in.0;
+        let a = u16::from(a);
+        let inv_a = 255 - a;
+        px_out.0 = [
+            (((u16::from(r) * a) + (u16::from(bg[0]) * inv_a)) / 255) as u8,
+            (((u16::from(g) * a) + (u16::from(bg[1]) * inv_a)) / 255) as u8,
+            (((u16::from(b) * a) + (u16::from(bg[2]) * inv_a)) / 255) as u8,
+        ];
+    }
+    out
 }
 
 /// Map an `image::ImageError` into the right `AppError` variant. `path` is
@@ -458,6 +536,121 @@ mod tests {
             }
             other => panic!("expected UnsupportedFormat for SVG, got {other:?}"),
         }
+    }
+
+    // --- Alpha handling matrix (Phase A3) ---
+
+    fn decode_png(bytes: &[u8]) -> DynamicImage {
+        ImageReader::new(Cursor::new(bytes))
+            .with_guessed_format()
+            .expect("guess format")
+            .decode()
+            .expect("decode")
+    }
+
+    #[test]
+    fn alpha_preserved_when_target_supports_alpha() {
+        // alpha.png is 4×4: left half opaque red (255,0,0,255), right half
+        // fully transparent (0,0,0,0). PNG output keeps it byte-for-byte
+        // equivalent (alpha channel intact, transparent right half).
+        let out = convert_one(
+            "png",
+            &format_fixture("alpha.png"),
+            &opts(TargetFormat::Png),
+        )
+        .expect("PNG → PNG with alpha");
+        let decoded = decode_png(&out.bytes);
+        let rgba = decoded.to_rgba8();
+        assert_eq!(
+            rgba.get_pixel(0, 0).0,
+            [255, 0, 0, 255],
+            "left = opaque red"
+        );
+        assert_eq!(
+            rgba.get_pixel(3, 0).0,
+            [0, 0, 0, 0],
+            "right = fully transparent"
+        );
+    }
+
+    #[test]
+    fn preserve_against_jpeg_refuses_alpha_image() {
+        let mut o = opts(TargetFormat::Jpeg);
+        o.alpha_handling = AlphaHandling::Preserve;
+        let result = convert_one("png", &format_fixture("alpha.png"), &o);
+        match result {
+            Err(AppError::ProcessingFailed { detail }) => {
+                assert!(
+                    detail.contains("alpha"),
+                    "expected alpha-related detail, got {detail}"
+                );
+            }
+            other => panic!("expected ProcessingFailed for preserve+JPEG, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn flatten_white_composites_transparent_pixels_to_white() {
+        // Right half (α=0) becomes white; left half (α=255) stays red.
+        let mut o = opts(TargetFormat::Jpeg);
+        o.alpha_handling = AlphaHandling::FlattenWhite;
+        // Use high quality so the round-trip preserves colors closely enough
+        // for byte-level assertions.
+        o.jpeg_quality = 100;
+        let out = convert_one("png", &format_fixture("alpha.png"), &o)
+            .expect("convert with flatten-white");
+        let decoded = decode_png(&out.bytes).to_rgb8();
+        // JPEG is lossy even at q=100, so allow a tolerance.
+        let left = decoded.get_pixel(0, 0).0;
+        let right = decoded.get_pixel(3, 0).0;
+        assert!(
+            left[0] > 200 && left[1] < 60 && left[2] < 60,
+            "left should look red, got {left:?}"
+        );
+        assert!(
+            right[0] > 240 && right[1] > 240 && right[2] > 240,
+            "right should look white, got {right:?}"
+        );
+    }
+
+    #[test]
+    fn flatten_black_composites_transparent_pixels_to_black() {
+        let mut o = opts(TargetFormat::Jpeg);
+        o.alpha_handling = AlphaHandling::FlattenBlack;
+        o.jpeg_quality = 100;
+        let out = convert_one("png", &format_fixture("alpha.png"), &o)
+            .expect("convert with flatten-black");
+        let decoded = decode_png(&out.bytes).to_rgb8();
+        let left = decoded.get_pixel(0, 0).0;
+        let right = decoded.get_pixel(3, 0).0;
+        assert!(
+            left[0] > 200 && left[1] < 60 && left[2] < 60,
+            "left should look red, got {left:?}"
+        );
+        assert!(
+            right[0] < 15 && right[1] < 15 && right[2] < 15,
+            "right should look black, got {right:?}"
+        );
+    }
+
+    #[test]
+    fn flatten_white_against_bmp_writes_rgb_bmp() {
+        let mut o = opts(TargetFormat::Bmp);
+        o.alpha_handling = AlphaHandling::FlattenWhite;
+        let out = convert_one("png", &format_fixture("alpha.png"), &o)
+            .expect("convert alpha-PNG → BMP with flatten-white");
+        assert_round_trip(&out.bytes, ImageFormat::Bmp, 4, 4);
+    }
+
+    #[test]
+    fn preserve_against_jpeg_with_opaque_source_succeeds() {
+        // No alpha to preserve → no refusal. Sanity-checks that the
+        // "non-trivial alpha" gate doesn't trip on plain RGB inputs.
+        let mut o = opts(TargetFormat::Jpeg);
+        o.alpha_handling = AlphaHandling::Preserve;
+        let out = convert_one("png", &images_fixture("red.png"), &o)
+            .expect("preserve on opaque RGB → JPEG");
+        assert_round_trip(&out.bytes, ImageFormat::Jpeg, 100, 50);
     }
 
     #[test]
