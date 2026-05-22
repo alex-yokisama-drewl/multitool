@@ -2,7 +2,7 @@
 
 > Ephemeral working doc. Deleted when the tool ships, alongside [images-to-pdf.md](images-to-pdf.md). The brief is the *what*; this is the *how* and the *where we are*. Update inline as commits land — tick boxes, append notes, record blockers. Architectural decisions that emerge mid-build go to [../../DECISIONS.md](../../DECISIONS.md), not this file.
 
-**Status:** 2026-05-22 — Phase E1 complete (IPC wrapper + 7 Vitest cases, 31/31 across the workspace). E2 (scaffold tool view + picker → staging) next.
+**Status:** 2026-05-22 — Phase E2 complete (tool view scaffolded, picker → staging, asset-scope wrapper landed in `system.ts`). E3 (thumbnail grid with dnd-kit) next.
 
 ## Conventions for this doc
 
@@ -105,9 +105,10 @@ Goal: tool view with staging area, reorder, add-more, remove, and the Create-PDF
   - New [src/lib/tools/imagesToPdf.ts](../../src/lib/tools/imagesToPdf.ts) built on `runJob` from Phase A. Mirrors PDF→Images' wrapper shape: `PageSize` (kebab-case mirror of the Rust enum), `Opts { page_size }`, `JobResult { output_path, page_count, duration_ms }`, `Progress { image, total }`, `AppErrorEnvelope` re-export.
   - 7 Vitest cases mirror `pdfToImages.test.ts`: invokes right command + args; forwards progress filtered by JobId; unsubscribes on success + on error; AbortSignal → cancel_job invoke; typed-error envelope round-trip; pre-aborted signal throws without invoke / listen.
 
-- [ ] **E2. `feat(images-to-pdf): scaffold tool view, picker → staging state`**
-  - New `src/tools/images-to-pdf/{index.ts, ImagesToPdf.tsx, types.ts}`. ViewState: `idle` → `staging`. "Add images" button calls `pickImageFiles`, transitions to `staging`. No reorder / remove yet — just render the picked list of filenames.
-  - **Not yet registered in `registry.ts`** (deferred to Phase F so the dashboard test stays green until the tool is feature-complete).
+- [x] **E2. `feat(images-to-pdf): scaffold tool view, picker → staging state`**
+  - New `src/tools/images-to-pdf/{index.ts, ImagesToPdf.tsx, types.ts}`. ViewState: `idle` | `staging` (E3/E4 will widen this). "Add images" triggers picker → `allowImagePreview` grant → sort-by-filename ascending → staging list of filenames. Add-more appends + re-sorts. Esc returns to dashboard, matching PdfToImages.
+  - B2 frontend wrapper landed alongside: `allowImagePreview(paths)` added to [src/lib/system.ts](../../src/lib/system.ts). Granting at pick-time so E3 can render `<img src={convertFileSrc(path)}>` without further IPC ceremony.
+  - **Not yet registered in `registry.ts`** — deferred to Phase F so the dashboard test stays green until the tool is feature-complete.
 
 - [ ] **E3. `feat(images-to-pdf): thumbnail grid with remove + drag-reorder`**
   - Replace the plain filename list with a `@dnd-kit/sortable` grid of thumbnail cards. Each card: `<img src={convertFileSrc(path)} />`, per-card remove button.
@@ -159,6 +160,7 @@ Goal: tool view with staging area, reorder, add-more, remove, and the Create-PDF
 
 *(One line per noteworthy event: phase boundary, discovery moment, scope shift. Newest first.)*
 
+- 2026-05-22 — E2 landed: `src/tools/images-to-pdf/{index.ts, types.ts, ImagesToPdf.tsx}` (~85 lines total). Idle → staging via picker, add-more, filename-ascending sort on every pick. `allowImagePreview()` wrapper added to `src/lib/system.ts` and called at pick-time (B2 wrapper resolved). Tool deliberately NOT in `registry.ts` yet — that's F1's job. 31/31 vitest still green, typecheck + lint clean.
 - 2026-05-22 — E1 landed: `src/lib/tools/imagesToPdf.ts` (~50 lines) + 7 Vitest cases mirroring the pdfToImages wrapper. PageSize is kebab-case ("auto-fit" / "a4" / "letter") to match the Rust enum's `#[serde(rename_all = "kebab-case")]`; field names verbatim (`page_size`, `output_path`). 31/31 vitest green workspace-wide, typecheck + lint clean.
 - 2026-05-22 — D1 landed: `src-tauri/src/tools/images_to_pdf/mod.rs` (~106 lines) + registry wire-up; `pnpm tauri build --no-bundle` builds in release. D2 dropped — shims kept inline per CLAUDE.md's "rule of three" guidance, plan's "revisit on tool #3" escape hatch, and the abstraction-tax cost of a generic helper (closure Send + 'static + Serialize bounds reaching app+job_id from inside the closure). Phase D exit gate met: fmt + clippy workspace + no-bundle build all green.
 - 2026-05-22 — C2 landed: `multitool-core/src/tools/images_to_pdf/job.rs` with `run_job()`, `Progress { image, total }`, `JobResult`. 10 unit tests; job.rs at 89.95% line cov. Phase C exit gate met (54 tests green across multitool-core; convert.rs 92.26%, job.rs 89.95%). **Design note:** the plan's "delete the partial PDF on cancel" simplified to "never create one" — because `convert` returns bytes to the caller and the orchestrator writes only after success, no partial PDF ever exists. Recorded in the C2 checkbox text so future readers don't go looking for the delete logic.

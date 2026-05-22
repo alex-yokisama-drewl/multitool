@@ -3,6 +3,7 @@
 // Components stay presentational and Playwright mocks the OS-touching calls
 // at this seam — same pattern as the per-tool IPC wrappers in `./tools/`.
 
+import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
@@ -32,4 +33,14 @@ export async function pickImageFiles(): Promise<string[] | null> {
 
 export async function revealInFolder(path: string): Promise<void> {
   await revealItemInDir(path);
+}
+
+// Grant the webview asset-protocol access to a set of picked image paths,
+// so `convertFileSrc(path)` can render thumbnails. Tauri's asset-protocol
+// scope starts empty by default (see DECISIONS.md → "Asset protocol scope:
+// dynamic per-pick"); this is the per-pick widening. The Rust side
+// re-validates `.png/.jpg/.jpeg/.webp` so a direct IPC call can't widen
+// the grant past image files.
+export async function allowImagePreview(paths: string[]): Promise<void> {
+  await invoke("allow_image_preview", { paths });
 }
