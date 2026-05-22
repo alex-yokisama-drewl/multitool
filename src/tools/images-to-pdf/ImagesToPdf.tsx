@@ -52,6 +52,16 @@ function fileName(path: string): string {
   return parts[parts.length - 1] ?? path;
 }
 
+/** Strip the final extension from a filename. Used by the output-name
+ * preview ({first_stem}.pdf) and is intentionally simple — multi-dot
+ * stems like `archive.tar.gz` yield `archive.tar`, matching the Rust
+ * orchestrator's `Path::file_stem` semantics. */
+function fileStem(path: string): string {
+  const name = fileName(path);
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? name.slice(0, dot) : name;
+}
+
 /** Sort items by filename ascending — the brief's "Initial order on each
  * pick batch" rule. Applied on every pick (initial + add-more) so the user
  * gets a stable starting point before any manual reorder. */
@@ -261,9 +271,18 @@ export function ImagesToPdf() {
             </div>
           )}
 
-          <div className="text-xs text-muted-foreground">
-            Staged ({state.items.length}). Drag to reorder; use Tab + Space for
-            keyboard reorder.
+          <div className="space-y-1 text-xs text-muted-foreground">
+            <div>
+              Staged ({state.items.length}). Drag to reorder; use Tab + Space
+              for keyboard reorder.
+            </div>
+            <div>
+              Output:{" "}
+              <span data-testid="output-preview" className="font-medium">
+                {fileStem(state.items[0]?.path ?? "")}.pdf
+              </span>{" "}
+              (in the first image&apos;s folder)
+            </div>
           </div>
           <DndContext
             sensors={sensors}

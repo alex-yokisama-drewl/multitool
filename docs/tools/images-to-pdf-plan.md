@@ -2,7 +2,7 @@
 
 > Ephemeral working doc. Deleted when the tool ships, alongside [images-to-pdf.md](images-to-pdf.md). The brief is the *what*; this is the *how* and the *where we are*. Update inline as commits land — tick boxes, append notes, record blockers. Architectural decisions that emerge mid-build go to [../../DECISIONS.md](../../DECISIONS.md), not this file.
 
-**Status:** 2026-05-22 — Phase E4 complete (page-size selector + Create PDF + running/done; error folded into staging). E5 (component tests) + manual smoke + registry next.
+**Status:** 2026-05-22 — Phase E5 complete (10 component tests, 41/41 vitest). Phase E gate met on automated checks; manual `pnpm tauri dev` smoke not possible from Claude (no interactive UI) — flagging for human smoke before/after Phase F. Phase F (registry + Playwright happy path) next.
 
 ## Conventions for this doc
 
@@ -123,10 +123,11 @@ Goal: tool view with staging area, reorder, add-more, remove, and the Create-PDF
   - Error path folded into `staging` (added optional `error: AppErrorEnvelope` field) so the items list is preserved and the user can retry without re-picking — the brief's "kept in staging state" rule. Cancellation surfaces as a Cancelled envelope through the same path; a follow-up polish could suppress that specific kind from the alert.
   - `Create PDF` disabled when items is empty (defensive; staging is unreachable with zero items, but keeps the button's disabled-state contract obvious).
 
-- [ ] **E5. `feat(images-to-pdf): React component tests`**
-  - Vitest + Testing Library: defaults render, picker → staging transition, reorder updates output-name preview, remove control, empty-list → idle, options forwarded, progress text renders, error envelope renders, Cancel aborts the signal. Mock `@/lib/*`.
+- [x] **E5. `feat(images-to-pdf): React component tests`**
+  - 10 Vitest + Testing Library cases mock `@/lib/system`, `@/lib/tools/imagesToPdf`, and `@tauri-apps/api/core` (the convertFileSrc seam): idle defaults render; picker → staging with allowImagePreview called; cancel-picker stays in idle; filename-ascending sort drives the output-name preview; × removes + empty-list → idle; page-size defaults to auto-fit and a different choice forwards through; streaming progress renders "image N / total"; error envelope folds back into staging with items preserved; Cancel button aborts the captured AbortSignal; revealInFolder receives the output_path on done.
+  - Added a small "Output: {first_stem}.pdf" preview (with `data-testid="output-preview"`) so the sort-driven first-item behaviour has a single UI surface to assert against. Mouse + keyboard drag-reorder of the dnd-kit grid itself is deferred to Playwright (E2E layer) — jsdom doesn't reliably simulate pointer-rect collision math.
 
-**Phase E exit gate:** `pnpm lint && pnpm test && pnpm typecheck` green; manual smoke via `pnpm tauri dev` confirms picker → staging → reorder → create → done works end-to-end on Linux.
+**Phase E exit gate:** automated checks (`pnpm lint && pnpm test && pnpm typecheck` + `pnpm exec prettier --check`) all green: 41/41 vitest, no type errors, no new lint errors. Interactive `pnpm tauri dev` smoke (picker → staging → reorder → create → done) is left for human review — Claude can't drive the GUI.
 
 ---
 
@@ -163,6 +164,7 @@ Goal: tool view with staging area, reorder, add-more, remove, and the Create-PDF
 
 *(One line per noteworthy event: phase boundary, discovery moment, scope shift. Newest first.)*
 
+- 2026-05-22 — E5 landed: 10 Vitest cases on `ImagesToPdf.test.tsx` covering idle defaults, picker → staging, picker-cancel, filename-ascending sort + output preview, ×-remove + empty → idle, page-size default + forward, progress text, error envelope folded into staging, Cancel aborts the signal, revealInFolder on done. Small "Output: {first_stem}.pdf" preview added to staging (sort + reorder coverage hook). 41/41 vitest, typecheck + lint + format clean. Manual `pnpm tauri dev` smoke deferred to human review — Claude can't drive the GUI.
 - 2026-05-22 — E4 landed: page-size radio (Auto-fit / A4 / Letter) + Create PDF wiring through running → done with `<JobProgress label="image" />`. Error folded into `staging` with optional `error` field so the items list is preserved per the brief. "Open output folder" calls `revealInFolder(output_path)`; "Convert another" resets to idle + restores default page size. AbortController pattern matches PdfToImages. 31/31 vitest, typecheck + lint + format clean. (E5 component tests next, then manual smoke at the phase exit gate.)
 - 2026-05-22 — E3 landed: thumbnail grid via @dnd-kit/sortable, mouse + keyboard reorder, per-card × remove (with stopPropagation), add-more appends + re-sorts, empty list → idle. Items wrapped as `{ id: uuid, path }` so duplicate paths work (brief explicitly allows). Inline transform string instead of pulling in @dnd-kit/utilities — keeps the dnd-kit dep count at the two B3 planned for. 31/31 vitest still green, typecheck + lint clean.
 - 2026-05-22 — E2 landed: `src/tools/images-to-pdf/{index.ts, types.ts, ImagesToPdf.tsx}` (~85 lines total). Idle → staging via picker, add-more, filename-ascending sort on every pick. `allowImagePreview()` wrapper added to `src/lib/system.ts` and called at pick-time (B2 wrapper resolved). Tool deliberately NOT in `registry.ts` yet — that's F1's job. 31/31 vitest still green, typecheck + lint clean.
