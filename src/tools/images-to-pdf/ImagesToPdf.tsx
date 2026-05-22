@@ -27,6 +27,7 @@ import {
   revealInFolder,
 } from "@/lib/system";
 import { convertImagesToPdf } from "@/lib/tools/imagesToPdf";
+import { fileName, fileStem } from "@/lib/utils";
 import type { AppErrorEnvelope, JobResult, PageSize, Progress } from "./types";
 
 // View state mirrors the brief's state machine:
@@ -46,21 +47,6 @@ type ViewState =
   | { kind: "staging"; items: StagedItem[]; error?: AppErrorEnvelope }
   | { kind: "running"; items: StagedItem[]; progress?: Progress }
   | { kind: "done"; result: JobResult };
-
-function fileName(path: string): string {
-  const parts = path.split(/[\\/]/);
-  return parts[parts.length - 1] ?? path;
-}
-
-/** Strip the final extension from a filename. Used by the output-name
- * preview ({first_stem}.pdf) and is intentionally simple — multi-dot
- * stems like `archive.tar.gz` yield `archive.tar`, matching the Rust
- * orchestrator's `Path::file_stem` semantics. */
-function fileStem(path: string): string {
-  const name = fileName(path);
-  const dot = name.lastIndexOf(".");
-  return dot > 0 ? name.slice(0, dot) : name;
-}
 
 /** Sort items by filename ascending — the brief's "Initial order on each
  * pick batch" rule. Applied on every pick (initial + add-more) so the user
