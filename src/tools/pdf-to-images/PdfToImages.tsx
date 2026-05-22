@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { JobProgress } from "@/components/JobProgress";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Progress as ProgressBar } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { pickPdfFile, revealInFolder } from "@/lib/system";
 import { convertPdfToImages } from "@/lib/tools/pdfToImages";
@@ -169,21 +169,12 @@ export function PdfToImages() {
               {fileName(state.path)}
             </div>
           </div>
-          <ProgressBar
-            value={
-              state.progress
-                ? (state.progress.page / state.progress.total) * 100
-                : 0
-            }
+          <JobProgress
+            current={state.progress?.page ?? 0}
+            total={state.progress?.total ?? 0}
+            label="page"
+            onCancel={cancel}
           />
-          <div className="text-sm text-muted-foreground">
-            {state.progress
-              ? `page ${state.progress.page} / ${state.progress.total}`
-              : "starting…"}
-          </div>
-          <Button variant="outline" onClick={cancel}>
-            Cancel
-          </Button>
         </div>
       )}
 

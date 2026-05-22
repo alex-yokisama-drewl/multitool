@@ -1,4 +1,4 @@
-// IPC wrapper for the PDF → Images tool.
+// IPC wrapper for the Images → PDF tool.
 //
 // Boundary file: all `@tauri-apps/api` calls for this tool route through
 // `runJob` (see `../jobRunner.ts`) so components stay presentational and
@@ -9,42 +9,44 @@
 
 import { runJob, type JobHooks } from "../jobRunner";
 
-export type Format = "png" | "jpeg";
+// Mirrors `multitool_core::tools::images_to_pdf::PageSize` with
+// `#[serde(rename_all = "kebab-case")]` — `AutoFit` → "auto-fit", etc.
+export type PageSize = "auto-fit" | "a4" | "letter";
 
+// Field name matches the Rust struct (serde default = verbatim). Don't
+// rename either side without changing both.
 export interface Opts {
-  format: Format;
-  dpi: number;
+  page_size: PageSize;
 }
 
-// Mirrors `multitool_core::tools::pdf_to_images::JobResult`. Field names
+// Mirrors `multitool_core::tools::images_to_pdf::JobResult`. Field names
 // match the Rust serde output (snake_case) so this stays a thin shape
 // adapter — no field renames to keep out of sync.
 export interface JobResult {
-  output_dir: string;
+  output_path: string;
   page_count: number;
   duration_ms: number;
 }
 
 export interface Progress {
-  page: number;
+  image: number;
   total: number;
 }
 
-// Re-exported from `@/lib/errors` so existing consumers of this wrapper
-// (the tool's `types.ts` barrel and the e2e mock) keep their import paths
-// unchanged after the shared-surfaces extraction.
+// Re-exported from `@/lib/errors` so consumers of this wrapper keep their
+// import paths consistent with pdfToImages.ts.
 export type { AppErrorEnvelope } from "../errors";
 
 export type ConvertHooks = JobHooks<Progress>;
 
-export async function convertPdfToImages(
-  path: string,
+export async function convertImagesToPdf(
+  paths: string[],
   opts: Opts,
   hooks: ConvertHooks = {},
 ): Promise<JobResult> {
-  return runJob<{ path: string; opts: Opts }, Progress, JobResult>(
-    "convert_pdf_to_images",
-    { path, opts },
+  return runJob<{ paths: string[]; opts: Opts }, Progress, JobResult>(
+    "convert_images_to_pdf",
+    { paths, opts },
     hooks,
   );
 }

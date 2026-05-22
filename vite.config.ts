@@ -16,6 +16,10 @@ const e2eAliases: Record<string, string> = e2e
         import.meta.dirname,
         "./tests/e2e/mocks/pdfToImages.ts",
       ),
+      "@/lib/tools/imagesToPdf": path.resolve(
+        import.meta.dirname,
+        "./tests/e2e/mocks/imagesToPdf.ts",
+      ),
       "@/lib/system": path.resolve(
         import.meta.dirname,
         "./tests/e2e/mocks/system.ts",
