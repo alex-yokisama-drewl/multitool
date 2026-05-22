@@ -2,7 +2,7 @@
 
 > Ephemeral working doc. Deleted when the tool ships, alongside [images-to-pdf.md](images-to-pdf.md). The brief is the *what*; this is the *how* and the *where we are*. Update inline as commits land — tick boxes, append notes, record blockers. Architectural decisions that emerge mid-build go to [../../DECISIONS.md](../../DECISIONS.md), not this file.
 
-**Status:** 2026-05-22 — Phase A complete. Phase B (system + capability + dep prep) next.
+**Status:** 2026-05-22 — Phase B in progress. B1 landed; B2 (fs:asset scope discovery) next.
 
 ## Conventions for this doc
 
@@ -40,7 +40,7 @@ Goal: extract the shared TS scaffolding the second tool wants, and migrate PDF�
 
 Goal: get the picker, capability grants, and new dep in place before any new tool code references them.
 
-- [ ] **B1. `feat(system): add pickImageFiles wrapper`**
+- [x] **B1. `feat(system): add pickImageFiles wrapper`**
   - Extend [src/lib/system.ts](../../src/lib/system.ts) with `pickImageFiles(): Promise<string[] | null>` using `open({ multiple: true, filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp"] }] })`.
   - Returns `null` on cancel, `string[]` on success (never an empty array — Tauri's dialog suppresses that).
   - No test needed (boundary file, mocked by Playwright); document the contract inline.
@@ -155,6 +155,7 @@ Goal: tool view with staging area, reorder, add-more, remove, and the Create-PDF
 
 *(One line per noteworthy event: phase boundary, discovery moment, scope shift. Newest first.)*
 
+- 2026-05-22 — B1 landed: `pickImageFiles()` added to [../../src/lib/system.ts](../../src/lib/system.ts). Multi-select, `.png/.jpg/.jpeg/.webp` filter, returns `null` on cancel / `string[]` on confirm. No unit test per plan (boundary file, mocked by Playwright).
 - 2026-05-22 — A3 landed: `JobProgress` extracted to [../../src/components/JobProgress.tsx](../../src/components/JobProgress.tsx) (props `{ current, total, label?, onCancel }`); handles the pre-first-event "starting…" case internally so Cancel stays available throughout `running`. PdfToImages threads through with `label="page"`. 5 new component tests; existing PdfToImages tests pass untouched. Phase A gate (lint/test/typecheck/e2e) green.
 - 2026-05-22 — A2 landed: `runJob<Args, Progress, Result>` extracted to [../../src/lib/jobRunner.ts](../../src/lib/jobRunner.ts); `pdfToImages.ts` is now a one-call wrapper. New `jobRunner.test.ts` covers jobId filter / abort / unlisten / payload passthrough; existing `pdfToImages.test.ts` kept passing untouched (mocks still at `@tauri-apps/api/*`, which `runJob` calls internally). 19/19 vitest green.
 - 2026-05-22 — A1 landed: `AppErrorEnvelope` moved to [../../src/lib/errors.ts](../../src/lib/errors.ts); `pdfToImages.ts` now re-exports so `types.ts` + e2e mock import paths stay unchanged. All gates green.

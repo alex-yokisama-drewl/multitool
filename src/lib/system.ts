@@ -15,6 +15,21 @@ export async function pickPdfFile(): Promise<string | null> {
   return typeof result === "string" ? result : null;
 }
 
+// Multi-select picker for the Images → PDF tool. Returns the picked paths
+// in the order the OS dialog produced them (the tool sorts them ascending
+// before staging). Tauri's plugin-dialog returns `null` on cancel and an
+// array of one-or-more paths on confirm — never an empty array — so this
+// preserves that null-vs-array contract for callers.
+export async function pickImageFiles(): Promise<string[] | null> {
+  const result = await open({
+    multiple: true,
+    directory: false,
+    filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp"] }],
+  });
+  if (result === null) return null;
+  return Array.isArray(result) ? result : [result];
+}
+
 export async function revealInFolder(path: string): Promise<void> {
   await revealItemInDir(path);
 }
