@@ -2,7 +2,7 @@
 
 > Ephemeral working doc. Deleted when the tool ships, alongside [images-to-pdf.md](images-to-pdf.md). The brief is the *what*; this is the *how* and the *where we are*. Update inline as commits land — tick boxes, append notes, record blockers. Architectural decisions that emerge mid-build go to [../../DECISIONS.md](../../DECISIONS.md), not this file.
 
-**Status:** 2026-05-22 — Phase A in progress. A1+A2 landed; A3 (JobProgress shared component) next.
+**Status:** 2026-05-22 — Phase A complete. Phase B (system + capability + dep prep) next.
 
 ## Conventions for this doc
 
@@ -27,7 +27,7 @@ Goal: extract the shared TS scaffolding the second tool wants, and migrate PDF�
   - [src/lib/tools/pdfToImages.ts](../../src/lib/tools/pdfToImages.ts) shrinks to a thin call site; its test in `pdfToImages.test.ts` keeps asserting the same observable behavior (mocks may need to move to the `runJob` boundary — fine, just keep coverage equivalent).
   - Add a focused `jobRunner.test.ts` covering: jobId filter, abort → cancel_job, listener unsubscribe on both success and error paths, payload shape passthrough.
 
-- [ ] **A3. `feat(ui): extract JobProgress shared component`**
+- [x] **A3. `feat(ui): extract JobProgress shared component`**
   - New `src/components/JobProgress.tsx`: props `{ current, total, label?, onCancel }`. Internally renders the shadcn `<Progress>` bar + the "N / total" status text + the Cancel button.
   - [src/tools/pdf-to-images/PdfToImages.tsx](../../src/tools/pdf-to-images/PdfToImages.tsx) consumes it; its `PdfToImages.test.tsx` keeps asserting the same labels/aria.
   - Component-level test on `JobProgress` itself: renders label, computes percent, button calls `onCancel`.
@@ -155,6 +155,7 @@ Goal: tool view with staging area, reorder, add-more, remove, and the Create-PDF
 
 *(One line per noteworthy event: phase boundary, discovery moment, scope shift. Newest first.)*
 
+- 2026-05-22 — A3 landed: `JobProgress` extracted to [../../src/components/JobProgress.tsx](../../src/components/JobProgress.tsx) (props `{ current, total, label?, onCancel }`); handles the pre-first-event "starting…" case internally so Cancel stays available throughout `running`. PdfToImages threads through with `label="page"`. 5 new component tests; existing PdfToImages tests pass untouched. Phase A gate (lint/test/typecheck/e2e) green.
 - 2026-05-22 — A2 landed: `runJob<Args, Progress, Result>` extracted to [../../src/lib/jobRunner.ts](../../src/lib/jobRunner.ts); `pdfToImages.ts` is now a one-call wrapper. New `jobRunner.test.ts` covers jobId filter / abort / unlisten / payload passthrough; existing `pdfToImages.test.ts` kept passing untouched (mocks still at `@tauri-apps/api/*`, which `runJob` calls internally). 19/19 vitest green.
 - 2026-05-22 — A1 landed: `AppErrorEnvelope` moved to [../../src/lib/errors.ts](../../src/lib/errors.ts); `pdfToImages.ts` now re-exports so `types.ts` + e2e mock import paths stay unchanged. All gates green.
 - 2026-05-22 — Plan written; branch `feat/images-to-pdf` ready, brief landed. Phase A starts on user go-ahead.
