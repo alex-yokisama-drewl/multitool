@@ -2,7 +2,7 @@
 
 > Ephemeral working doc. Deleted when the tool ships, alongside [images-to-pdf.md](images-to-pdf.md). The brief is the *what*; this is the *how* and the *where we are*. Update inline as commits land — tick boxes, append notes, record blockers. Architectural decisions that emerge mid-build go to [../../DECISIONS.md](../../DECISIONS.md), not this file.
 
-**Status:** 2026-05-22 — Phase E2 complete (tool view scaffolded, picker → staging, asset-scope wrapper landed in `system.ts`). E3 (thumbnail grid with dnd-kit) next.
+**Status:** 2026-05-22 — Phase E3 complete (thumbnail grid via @dnd-kit/sortable with mouse + keyboard reorder, per-card remove, add-more, empty-after-removal → idle). E4 (page-size + Create PDF flow) next.
 
 ## Conventions for this doc
 
@@ -110,10 +110,12 @@ Goal: tool view with staging area, reorder, add-more, remove, and the Create-PDF
   - B2 frontend wrapper landed alongside: `allowImagePreview(paths)` added to [src/lib/system.ts](../../src/lib/system.ts). Granting at pick-time so E3 can render `<img src={convertFileSrc(path)}>` without further IPC ceremony.
   - **Not yet registered in `registry.ts`** — deferred to Phase F so the dashboard test stays green until the tool is feature-complete.
 
-- [ ] **E3. `feat(images-to-pdf): thumbnail grid with remove + drag-reorder`**
-  - Replace the plain filename list with a `@dnd-kit/sortable` grid of thumbnail cards. Each card: `<img src={convertFileSrc(path)} />`, per-card remove button.
-  - Reorder is mouse + keyboard. Add-more appends to the list.
-  - Empty-after-removal returns to `idle`.
+- [x] **E3. `feat(images-to-pdf): thumbnail grid with remove + drag-reorder`**
+  - Filename list replaced with a responsive grid (2/3/4 cols) of thumbnail cards rendering `<img src={convertFileSrc(path)} />`. The card body is a `<button>` wired as the dnd-kit drag handle (so keyboard focus + Space activates reorder); a separate × button (with `stopPropagation` so clicks never start a drag) removes the item.
+  - `DndContext` with `PointerSensor` + `KeyboardSensor` (using `sortableKeyboardCoordinates`); `SortableContext` with `rectSortingStrategy`; `arrayMove` on `onDragEnd`.
+  - Items wrapped in `{ id, path }` shape (stable UUID id) so duplicate paths — which the brief explicitly allows — don't collide as dnd-kit keys. `id` never reaches IPC; only `path` does.
+  - Add-more appends new items + re-sorts; remove dropping last item → `idle`.
+  - CSS transform serialized inline (`translate3d(${x}px, ${y}px, 0)`) — avoids adding `@dnd-kit/utilities` as a third dnd-kit dep beyond the two B3 planned for.
 
 - [ ] **E4. `feat(images-to-pdf): page-size option + Create PDF + progress/done/error`**
   - Page-size radio group (`auto-fit` / `a4` / `letter`).
@@ -160,6 +162,7 @@ Goal: tool view with staging area, reorder, add-more, remove, and the Create-PDF
 
 *(One line per noteworthy event: phase boundary, discovery moment, scope shift. Newest first.)*
 
+- 2026-05-22 — E3 landed: thumbnail grid via @dnd-kit/sortable, mouse + keyboard reorder, per-card × remove (with stopPropagation), add-more appends + re-sorts, empty list → idle. Items wrapped as `{ id: uuid, path }` so duplicate paths work (brief explicitly allows). Inline transform string instead of pulling in @dnd-kit/utilities — keeps the dnd-kit dep count at the two B3 planned for. 31/31 vitest still green, typecheck + lint clean.
 - 2026-05-22 — E2 landed: `src/tools/images-to-pdf/{index.ts, types.ts, ImagesToPdf.tsx}` (~85 lines total). Idle → staging via picker, add-more, filename-ascending sort on every pick. `allowImagePreview()` wrapper added to `src/lib/system.ts` and called at pick-time (B2 wrapper resolved). Tool deliberately NOT in `registry.ts` yet — that's F1's job. 31/31 vitest still green, typecheck + lint clean.
 - 2026-05-22 — E1 landed: `src/lib/tools/imagesToPdf.ts` (~50 lines) + 7 Vitest cases mirroring the pdfToImages wrapper. PageSize is kebab-case ("auto-fit" / "a4" / "letter") to match the Rust enum's `#[serde(rename_all = "kebab-case")]`; field names verbatim (`page_size`, `output_path`). 31/31 vitest green workspace-wide, typecheck + lint clean.
 - 2026-05-22 — D1 landed: `src-tauri/src/tools/images_to_pdf/mod.rs` (~106 lines) + registry wire-up; `pnpm tauri build --no-bundle` builds in release. D2 dropped — shims kept inline per CLAUDE.md's "rule of three" guidance, plan's "revisit on tool #3" escape hatch, and the abstraction-tax cost of a generic helper (closure Send + 'static + Serialize bounds reaching app+job_id from inside the closure). Phase D exit gate met: fmt + clippy workspace + no-bundle build all green.
