@@ -95,9 +95,7 @@ describe("ImageFormatConverter", () => {
   it("stays in idle when the picker is cancelled (null)", async () => {
     renderTool();
     pickConvertibleImagesMock.mockResolvedValueOnce(null);
-    fireEvent.click(
-      screen.getByRole("button", { name: /^select images$/i }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /^select images$/i }));
     await waitFor(() => {
       expect(pickConvertibleImagesMock).toHaveBeenCalledTimes(1);
     });
