@@ -2,7 +2,7 @@
 
 > Ephemeral working doc. Deleted when the tool ships, alongside [images-to-pdf.md](images-to-pdf.md). The brief is the *what*; this is the *how* and the *where we are*. Update inline as commits land — tick boxes, append notes, record blockers. Architectural decisions that emerge mid-build go to [../../DECISIONS.md](../../DECISIONS.md), not this file.
 
-**Status:** 2026-05-22 — Phase C complete. C1 (convert) + C2 (job orchestrator) merged with 22 unit tests; convert.rs at 92.26% line cov, job.rs at 89.95%. Phase D (Rust shell) next.
+**Status:** 2026-05-22 — Phase D complete. D1 (shell command + register) landed; D2 (helper extraction) dropped per the plan's decision-point — see Log. Phase E (Frontend) next.
 
 ## Conventions for this doc
 
@@ -85,12 +85,13 @@ Goal: pure conversion + orchestrator with full unit-test coverage, no Tauri impo
 
 Goal: thinnest viable shim that calls the orchestrator and emits events. Decide on extracting the shim helper *after* writing the new one.
 
-- [ ] **D1. `feat(images-to-pdf): Tauri command + register`**
-  - New `src-tauri/src/tools/images_to_pdf/mod.rs`. Pattern from [src-tauri/src/tools/pdf_to_images/mod.rs](../../src-tauri/src/tools/pdf_to_images/mod.rs): register JobId, `spawn_blocking`, wire `on_page` → `app.emit("tool:progress", ...)`, emit `tool:complete` / `tool:error` after join.
-  - Wire into `register_commands` (one-line edit).
+- [x] **D1. `feat(images-to-pdf): Tauri command + register`**
+  - New `src-tauri/src/tools/images_to_pdf/mod.rs`. Mirrors `src-tauri/src/tools/pdf_to_images/mod.rs` deliberately so the D2 decision diff is clean: registers JobId, `spawn_blocking`, wires `on_progress` → `app.emit("tool:progress", ...)`, emits `tool:complete` / `tool:error` after join.
+  - Wired into `register_commands` with a single import + handler entry.
 
-- [ ] **D2. `refactor(ipc): extract run_blocking_job shell helper`** *(decision point — fold into D1 or drop entirely)*
-  - After writing D1, diff the two shell shims (this one + PDF→Images). If the shape matches closely enough that ~80% of both is identical: extract a `run_blocking_job(app, job_id, work)` helper and migrate both tools. If shapes diverge (e.g. event payload differences worth keeping local): drop this commit and leave the shims inline; revisit on tool #3. Record the call in the commit message either way.
+- [x] **D2. `refactor(ipc): extract run_blocking_job shell helper`** — **dropped.**
+  - After writing D1, diffed the two shims: shapes match closely (~60 of ~105 lines identical: ProgressEvent/CompleteEvent/ErrorEvent structs, registry register/unregister, spawn_blocking + await + join-error map, complete/error emit). Per-tool differences are the function name, the input-arg shape (`PathBuf` vs `Vec<PathBuf>`), and the closure body that calls multitool-core's `run_job`.
+  - Decision: leave the shims inline. CLAUDE.md is explicit ("Three similar lines is better than a premature abstraction") and even 60 lines × 2 sites is only the second occurrence. A helper would need non-trivial trait bounds (closure `Send + 'static`, generic Progress/Result with `Serialize` bounds, emit calls reaching app+job_id from inside the closure) — abstraction tax that two linearly-readable shims don't pay. The plan offered "revisit on tool #3" as the explicit escape; that's where the rule-of-three evidence will be unambiguous.
 
 **Phase D exit gate:** `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings` and `pnpm tauri build --no-bundle` green.
 
@@ -152,12 +153,13 @@ Goal: tool view with staging area, reorder, add-more, remove, and the Create-PDF
 *(Append as they surface. Resolve and strike through. If a resolution changes the brief, edit the brief — not just the note here.)*
 
 - ~~**B2 — Tauri 2.x dynamic vs. static `fs:asset` scope.**~~ Resolved 2026-05-22: dynamic is viable via `Manager::asset_protocol_scope().allow_file(...)`. Picked dynamic; the brief's "fs:asset" was a misnomer (asset protocol is core, not an `fs:` permission). See DECISIONS.
-- **D2 — shim-extraction decision.** Defer until D1 lands; commit message records the call.
+- ~~**D2 — shim-extraction decision.**~~ Resolved 2026-05-22: dropped. Shims kept inline; revisit when tool #3 lands. See D2 entry above.
 
 ## Log
 
 *(One line per noteworthy event: phase boundary, discovery moment, scope shift. Newest first.)*
 
+- 2026-05-22 — D1 landed: `src-tauri/src/tools/images_to_pdf/mod.rs` (~106 lines) + registry wire-up; `pnpm tauri build --no-bundle` builds in release. D2 dropped — shims kept inline per CLAUDE.md's "rule of three" guidance, plan's "revisit on tool #3" escape hatch, and the abstraction-tax cost of a generic helper (closure Send + 'static + Serialize bounds reaching app+job_id from inside the closure). Phase D exit gate met: fmt + clippy workspace + no-bundle build all green.
 - 2026-05-22 — C2 landed: `multitool-core/src/tools/images_to_pdf/job.rs` with `run_job()`, `Progress { image, total }`, `JobResult`. 10 unit tests; job.rs at 89.95% line cov. Phase C exit gate met (54 tests green across multitool-core; convert.rs 92.26%, job.rs 89.95%). **Design note:** the plan's "delete the partial PDF on cancel" simplified to "never create one" — because `convert` returns bytes to the caller and the orchestrator writes only after success, no partial PDF ever exists. Recorded in the C2 checkbox text so future readers don't go looking for the delete logic.
 - 2026-05-22 — C1 landed: `multitool-core/src/tools/images_to_pdf/{mod.rs, convert.rs}` with `convert()` returning `Result<(Vec<u8>, JobSummary), AppError>` (bytes back to caller — keeps disk I/O in C2's orchestrator and means cancel never leaves a partial PDF). printpdf 0.7 with `default-features = false`, image gains `webp` feature. EXIF orientation honored via decoder.orientation() + apply_orientation; rotated.jpg fixture (orientation 6) verifies the wide→tall swap. 12 unit tests, 92.26% line cov on convert.rs (gate ≥80%). Phase C exit gate not yet met — C2 still pending.
 - 2026-05-22 — B3 landed: `@dnd-kit/sortable` + `@dnd-kit/core` added. DECISIONS entry "Staging-area reorder: @dnd-kit/sortable over native HTML5 / react-beautiful-dnd" recorded (a11y mandate + react-beautiful-dnd archived + dep-discipline trade-off acknowledged). Phase B exit gate green (`pnpm tauri build --no-bundle` confirms no wedge from the new deps).

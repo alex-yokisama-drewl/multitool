@@ -11,12 +11,14 @@
 //! `#[tauri::command]` signature that drifted will fail `cargo build` /
 //! `cargo clippy` before any UI loads.
 
+pub mod images_to_pdf;
 pub mod pdf_to_images;
 
 pub fn register_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     builder.invoke_handler(tauri::generate_handler![
         crate::ipc::cancel_job,
         crate::asset_scope::allow_image_preview,
+        images_to_pdf::convert_images_to_pdf,
         pdf_to_images::convert_pdf_to_images,
     ])
 }
