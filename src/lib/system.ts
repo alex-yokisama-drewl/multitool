@@ -43,6 +43,43 @@ export async function pickImageFiles(): Promise<string[] | null> {
   return Array.isArray(result) ? result : [result];
 }
 
+// Multi-select picker for the Image Format Converter tool. Accepts every
+// raster format the converter decodes (per docs/tools/image-format-converter.md
+// → Inputs) plus SVG. The filter is advisory — the Rust side re-validates
+// by attempting a decode, so a renamed file still routes through the
+// skip+continue path rather than crashing.
+export async function pickConvertibleImages(): Promise<string[] | null> {
+  const result = await open({
+    multiple: true,
+    directory: false,
+    filters: [
+      {
+        name: "Images",
+        extensions: [
+          "png",
+          "jpg",
+          "jpeg",
+          "webp",
+          "bmp",
+          "tif",
+          "tiff",
+          "gif",
+          "ico",
+          "tga",
+          "pbm",
+          "pgm",
+          "ppm",
+          "pnm",
+          "qoi",
+          "svg",
+        ],
+      },
+    ],
+  });
+  if (result === null) return null;
+  return Array.isArray(result) ? result : [result];
+}
+
 export async function revealInFolder(path: string): Promise<void> {
   await revealItemInDir(path);
 }
