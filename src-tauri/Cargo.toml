@@ -30,9 +30,10 @@ tauri-build = { version = "2", features = [] }
 multitool-core = { path = "multitool-core" }
 tauri = { version = "2", features = ["protocol-asset"] }
 serde = { version = "1", features = ["derive"] }
-# `tokio` and `tracing` are Phase-D baseline deps for future tool commands;
-# nothing in this crate uses them directly yet.
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+# `CancellationToken` re-exported by `multitool_core::ipc`; declared here too
+# so `src/ipc/streaming_job.rs` can name the type in its public signature.
+tokio-util = "0.7"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tauri-plugin-dialog = "2.7.1"

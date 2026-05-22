@@ -8,6 +8,7 @@
 
 pub mod error;
 pub mod fs;
+pub mod image;
 pub mod ipc;
 pub mod pdfium;
 pub mod tools;

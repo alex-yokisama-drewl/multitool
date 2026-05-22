@@ -11,6 +11,7 @@ import {
   revealInFolder,
 } from "@/lib/system";
 import { convertImageFormat } from "@/lib/tools/imageFormatConverter";
+import { fileName } from "@/lib/utils";
 import type {
   AlphaHandling,
   AppErrorEnvelope,
@@ -45,11 +46,6 @@ const ALPHA_LESS_TARGETS: ReadonlySet<TargetFormat> = new Set<TargetFormat>([
 ]);
 
 const SVG_EXT_RX = /\.svg$/i;
-
-function fileName(path: string): string {
-  const parts = path.split(/[\\/]/);
-  return parts[parts.length - 1] ?? path;
-}
 
 function hasSvgInputs(paths: string[]): boolean {
   return paths.some((p) => SVG_EXT_RX.test(p));

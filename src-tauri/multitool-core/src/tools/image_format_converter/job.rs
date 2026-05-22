@@ -89,8 +89,8 @@ pub struct JobResult {
 pub fn run_job<F>(
     inputs: &[PathBuf],
     opts: &Opts,
-    mut on_progress: F,
     cancel: &CancellationToken,
+    mut on_progress: F,
 ) -> AppResult<JobResult>
 where
     F: FnMut(Progress) -> AppResult<()>,
@@ -244,15 +244,10 @@ mod tests {
 
         let events = RefCell::new(Vec::new());
         let cancel = CancellationToken::new();
-        let result = run_job(
-            &inputs,
-            &default_opts(TargetFormat::Png),
-            |p| {
-                events.borrow_mut().push(p);
-                Ok(())
-            },
-            &cancel,
-        )
+        let result = run_job(&inputs, &default_opts(TargetFormat::Png), &cancel, |p| {
+            events.borrow_mut().push(p);
+            Ok(())
+        })
         .expect("run_job ok");
 
         assert_eq!(result.success_count, 3);
@@ -288,12 +283,9 @@ mod tests {
         ];
 
         let cancel = CancellationToken::new();
-        let result = run_job(
-            &inputs,
-            &default_opts(TargetFormat::Jpeg),
-            |_| Ok(()),
-            &cancel,
-        )
+        let result = run_job(&inputs, &default_opts(TargetFormat::Jpeg), &cancel, |_| {
+            Ok(())
+        })
         .expect("job should succeed despite mid-batch skip");
 
         assert_eq!(result.success_count, 2);
@@ -313,12 +305,9 @@ mod tests {
         let inputs = vec![missing.clone()];
 
         let cancel = CancellationToken::new();
-        let result = run_job(
-            &inputs,
-            &default_opts(TargetFormat::Png),
-            |_| Ok(()),
-            &cancel,
-        )
+        let result = run_job(&inputs, &default_opts(TargetFormat::Png), &cancel, |_| {
+            Ok(())
+        })
         .expect("job ok with single missing input");
         assert_eq!(result.success_count, 0);
         assert_eq!(result.skip_count, 1);
@@ -336,15 +325,10 @@ mod tests {
         cancel.cancel();
 
         let calls = RefCell::new(0usize);
-        let result = run_job(
-            &inputs,
-            &default_opts(TargetFormat::Png),
-            |_| {
-                *calls.borrow_mut() += 1;
-                Ok(())
-            },
-            &cancel,
-        );
+        let result = run_job(&inputs, &default_opts(TargetFormat::Png), &cancel, |_| {
+            *calls.borrow_mut() += 1;
+            Ok(())
+        });
         assert!(matches!(result, Err(AppError::Cancelled)));
         assert_eq!(*calls.borrow(), 0, "no progress events fire pre-cancel");
         // Output file wasn't written.
@@ -367,6 +351,7 @@ mod tests {
         let result = run_job(
             &inputs,
             &default_opts(TargetFormat::Jpeg),
+            &cancel,
             |progress| {
                 // Cancel right after the first file's success event so the
                 // loop's next iteration trips the cancel checkpoint.
@@ -375,7 +360,6 @@ mod tests {
                 }
                 Ok(())
             },
-            &cancel,
         );
         assert!(matches!(result, Err(AppError::Cancelled)));
         // First file should have been written; second should not exist.
@@ -405,8 +389,8 @@ mod tests {
         let result = run_job(
             std::slice::from_ref(&input),
             &default_opts(TargetFormat::Png),
-            |_| Ok(()),
             &cancel,
+            |_| Ok(()),
         )
         .expect("same-format conversion ok");
 
@@ -424,23 +408,18 @@ mod tests {
         let dir = TempDir::new().expect("tempdir");
         let inputs = vec![copy_fixture_to(dir.path(), "red.png")];
         let cancel = CancellationToken::new();
-        let result = run_job(
-            &inputs,
-            &default_opts(TargetFormat::Png),
-            |_| {
-                Err(AppError::ProcessingFailed {
-                    detail: "emit failed".into(),
-                })
-            },
-            &cancel,
-        );
+        let result = run_job(&inputs, &default_opts(TargetFormat::Png), &cancel, |_| {
+            Err(AppError::ProcessingFailed {
+                detail: "emit failed".into(),
+            })
+        });
         assert!(matches!(result, Err(AppError::ProcessingFailed { .. })));
     }
 
     #[test]
     fn empty_inputs_yield_processing_failed() {
         let cancel = CancellationToken::new();
-        let result = run_job(&[], &default_opts(TargetFormat::Png), |_| Ok(()), &cancel);
+        let result = run_job(&[], &default_opts(TargetFormat::Png), &cancel, |_| Ok(()));
         match result {
             Err(AppError::ProcessingFailed { detail }) => {
                 assert_eq!(detail, "no images to convert");

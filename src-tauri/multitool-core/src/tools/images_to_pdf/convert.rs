@@ -16,16 +16,14 @@
 //! - `A4` / `Letter` — the image is scaled to fit (aspect preserved) and
 //!   centered on the standard page.
 
-use std::io::Cursor;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use image::metadata::Orientation;
-use image::{DynamicImage, ImageDecoder, ImageError, ImageReader};
 use printpdf::{ColorBits, ColorSpace, Image, ImageTransform, ImageXObject, Mm, PdfDocument, Px};
 use tokio_util::sync::CancellationToken;
 
 use crate::error::AppError;
+use crate::image::decode_oriented;
 
 /// Page-size policy for the assembled PDF.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
@@ -104,7 +102,7 @@ where
             return Err(AppError::Cancelled);
         }
 
-        let img = decode_with_orientation(bytes, path)?;
+        let img = decode_oriented(source_ext_of(path), bytes)?;
         let rgb = img.into_rgb8();
         let (img_w_px, img_h_px) = rgb.dimensions();
         let pixel_bytes = rgb.into_raw();
@@ -150,22 +148,11 @@ where
     ))
 }
 
-/// Decode `bytes`, applying EXIF orientation when present.
-///
-/// Best-effort on the orientation lookup: a decoder that doesn't carry EXIF
-/// (PNG without an `eXIf` chunk, JPEG saved without orientation, …) is
-/// treated as `NoTransforms` so a missing tag never fails a valid image.
-fn decode_with_orientation(bytes: &[u8], path: &Path) -> Result<DynamicImage, AppError> {
-    let reader = ImageReader::new(Cursor::new(bytes))
-        .with_guessed_format()
-        .map_err(|err| io_to_app_err(path, err))?;
-    let mut decoder = reader
-        .into_decoder()
-        .map_err(|err| image_to_app_err(path, err))?;
-    let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
-    let mut img = DynamicImage::from_decoder(decoder).map_err(|err| image_to_app_err(path, err))?;
-    img.apply_orientation(orientation);
-    Ok(img)
+/// Lowercased extension of `path` (no leading dot, `""` when absent).
+/// Used to disambiguate magic-less formats (TGA) in [`decode_oriented`];
+/// when bytes-sniffing succeeds the extension is ignored.
+fn source_ext_of(path: &std::path::Path) -> &str {
+    path.extension().and_then(|s| s.to_str()).unwrap_or("")
 }
 
 fn page_size_for(policy: PageSize, img_w_px: u32, img_h_px: u32) -> (f32, f32) {
@@ -214,23 +201,6 @@ fn layout_image(
 
 fn px_to_mm(px: u32) -> f32 {
     (px as f32) * MM_PER_INCH / BASE_DPI
-}
-
-fn io_to_app_err(path: &Path, err: std::io::Error) -> AppError {
-    AppError::ProcessingFailed {
-        detail: format!("{}: {err}", path.display()),
-    }
-}
-
-fn image_to_app_err(path: &Path, err: ImageError) -> AppError {
-    match err {
-        ImageError::Unsupported(_) | ImageError::Decoding(_) => AppError::UnsupportedFormat {
-            detail: format!("{}: {err}", path.display()),
-        },
-        _ => AppError::ProcessingFailed {
-            detail: format!("{}: {err}", path.display()),
-        },
-    }
 }
 
 #[cfg(test)]
@@ -407,6 +377,9 @@ mod tests {
 
     #[test]
     fn unsupported_bytes_yields_unsupported_format() {
+        // `decode_oriented` returns context-free errors after the shared-
+        // surface extraction. Tools that want the path in the message wrap
+        // at the call site; here we just assert the right variant fires.
         let cancel = CancellationToken::new();
         let result = convert(
             &[fixture("garbage.bin")],
@@ -414,12 +387,10 @@ mod tests {
             |_| Ok(()),
             &cancel,
         );
-        match result {
-            Err(AppError::UnsupportedFormat { detail }) => {
-                assert!(detail.contains("garbage.bin"), "detail was {detail}");
-            }
-            other => panic!("expected UnsupportedFormat, got {other:?}"),
-        }
+        assert!(
+            matches!(result, Err(AppError::UnsupportedFormat { .. })),
+            "expected UnsupportedFormat, got {result:?}",
+        );
     }
 
     #[test]

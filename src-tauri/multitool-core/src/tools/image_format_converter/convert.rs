@@ -5,24 +5,23 @@
 //! in a skip + continue loop — so a per-file failure here translates into a
 //! per-file skip there, not a job-level abort.
 //!
-//! EXIF orientation is honored on input via [`decode_with_orientation`]
-//! (mirrors the helper in `images_to_pdf::convert`; Phase F will extract the
-//! shared body to `multitool_core::image` once three call sites agree).
+//! EXIF orientation is honored on input via
+//! [`multitool_core::image::decode_oriented`], the shared helper that
+//! `images_to_pdf` also routes through.
 //!
 //! Per-tool spec: `docs/tools/image-format-converter.md`. Build plan:
 //! `docs/tools/image-format-converter-plan.md`. Both delete on ship.
 
 use std::io::Cursor;
-use std::path::Path;
 
 use image::codecs::jpeg::JpegEncoder;
-use image::metadata::Orientation;
-use image::{
-    AnimationDecoder, DynamicImage, ImageDecoder, ImageError, ImageFormat, ImageReader, RgbImage,
-};
+#[cfg(test)]
+use image::ImageReader;
+use image::{AnimationDecoder, DynamicImage, ImageFormat, RgbImage};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
+use crate::image::{decode_oriented, image_to_app_err};
 
 /// Raster format the converter emits. Vector outputs are intentionally out of
 /// scope (the brief explicitly rejects "fake" raster→vector conversions like
@@ -152,7 +151,7 @@ pub fn convert_one(source_ext: &str, input_bytes: &[u8], opts: &Opts) -> AppResu
         if source_ext.eq_ignore_ascii_case("gif") && is_animated_gif(input_bytes) {
             warnings.push("animated GIF; converted first frame only".into());
         }
-        decode_with_orientation(source_ext, input_bytes)?
+        decode_oriented(source_ext, input_bytes)?
     };
     let mut encoded = encode_raster(&img, opts)?;
     encoded.warnings = warnings;
@@ -172,42 +171,6 @@ fn is_animated_gif(bytes: &[u8]) -> bool {
     GifDecoder::new(Cursor::new(bytes))
         .map(|d| d.into_frames().take(2).count() > 1)
         .unwrap_or(false)
-}
-
-/// Decode `bytes` and apply any EXIF orientation tag the decoder exposes.
-///
-/// A decoder without an orientation tag (PNG without `eXIf`, JPEG saved
-/// without orientation, …) is treated as `NoTransforms` — a missing tag never
-/// fails a valid image.
-///
-/// `source_ext` is consulted only when bytes-sniffing comes back inconclusive
-/// — TGA in particular has no reliable magic and `with_guessed_format` returns
-/// no format for it. Trusting bytes first means a `.tga` file containing PNG
-/// data still gets the right decoder; the extension is the fallback, not the
-/// override.
-///
-/// Duplicated from `images_to_pdf::convert::decode_with_orientation` (with the
-/// extension-fallback added here); Phase F will extract the shared body to
-/// `multitool_core::image`.
-fn decode_with_orientation(source_ext: &str, bytes: &[u8]) -> AppResult<DynamicImage> {
-    let mut reader = ImageReader::new(Cursor::new(bytes))
-        .with_guessed_format()
-        .map_err(|err| AppError::ProcessingFailed {
-            detail: format!("decode: {err}"),
-        })?;
-    if reader.format().is_none() {
-        if let Some(fmt) = ImageFormat::from_extension(source_ext) {
-            reader.set_format(fmt);
-        }
-    }
-    let mut decoder = reader
-        .into_decoder()
-        .map_err(|err| image_to_app_err(Path::new(""), err))?;
-    let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
-    let mut img =
-        DynamicImage::from_decoder(decoder).map_err(|err| image_to_app_err(Path::new(""), err))?;
-    img.apply_orientation(orientation);
-    Ok(img)
 }
 
 /// Rasterize an SVG document to a `DynamicImage::ImageRgba8` via `resvg`.
@@ -350,9 +313,7 @@ fn encode_raster(img: &DynamicImage, opts: &Opts) -> AppResult<EncodedFile> {
             // is a cheap conversion that doesn't lose information.
             let rgb = flattened.unwrap_or_else(|| img.to_rgb8());
             let mut encoder = JpegEncoder::new_with_quality(&mut bytes, q);
-            encoder
-                .encode_image(&rgb)
-                .map_err(|err| image_to_app_err(Path::new(""), err))?;
+            encoder.encode_image(&rgb).map_err(image_to_app_err)?;
         }
         TargetFormat::Bmp => {
             // BMP encoder in `image` 0.25 accepts RGBA but doesn't store it;
@@ -364,12 +325,12 @@ fn encode_raster(img: &DynamicImage, opts: &Opts) -> AppResult<EncodedFile> {
             };
             bmp_img
                 .write_to(&mut Cursor::new(&mut bytes), ImageFormat::Bmp)
-                .map_err(|err| image_to_app_err(Path::new(""), err))?;
+                .map_err(image_to_app_err)?;
         }
         format => {
             // PNG / WebP (lossless) / TIFF — alpha-supporting targets.
             img.write_to(&mut Cursor::new(&mut bytes), format.image_format())
-                .map_err(|err| image_to_app_err(Path::new(""), err))?;
+                .map_err(image_to_app_err)?;
         }
     }
 
@@ -434,26 +395,6 @@ fn flatten_onto(img: &DynamicImage, bg: [u8; 3]) -> RgbImage {
         ];
     }
     out
-}
-
-/// Map an `image::ImageError` into the right `AppError` variant. `path` is
-/// included verbatim in the detail string when non-empty so the caller can
-/// identify which file failed — empty paths are stripped to avoid noisy
-/// `: ` prefixes in convert_one's path-less callers.
-fn image_to_app_err(path: &Path, err: ImageError) -> AppError {
-    let prefix = if path.as_os_str().is_empty() {
-        String::new()
-    } else {
-        format!("{}: ", path.display())
-    };
-    match err {
-        ImageError::Unsupported(_) | ImageError::Decoding(_) => AppError::UnsupportedFormat {
-            detail: format!("{prefix}{err}"),
-        },
-        _ => AppError::ProcessingFailed {
-            detail: format!("{prefix}{err}"),
-        },
-    }
 }
 
 #[cfg(test)]
