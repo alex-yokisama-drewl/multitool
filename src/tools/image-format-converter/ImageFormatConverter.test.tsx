@@ -2,15 +2,12 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const {
-  convertMock,
-  pickConvertibleImagesMock,
-  revealInFolderMock,
-} = vi.hoisted(() => ({
-  convertMock: vi.fn(),
-  pickConvertibleImagesMock: vi.fn(),
-  revealInFolderMock: vi.fn(),
-}));
+const { convertMock, pickConvertibleImagesMock, revealInFolderMock } =
+  vi.hoisted(() => ({
+    convertMock: vi.fn(),
+    pickConvertibleImagesMock: vi.fn(),
+    revealInFolderMock: vi.fn(),
+  }));
 
 vi.mock("@/lib/tools/imageFormatConverter", () => ({
   convertImageFormat: convertMock,
@@ -57,7 +54,10 @@ describe("ImageFormatConverter", () => {
     expect(screen.getByText(/staged \(2\)/i)).toBeInTheDocument();
 
     // Re-pick with one overlap → still 2.
-    pickConvertibleImagesMock.mockResolvedValueOnce(["/tmp/a.png", "/tmp/c.png"]);
+    pickConvertibleImagesMock.mockResolvedValueOnce([
+      "/tmp/a.png",
+      "/tmp/c.png",
+    ]);
     fireEvent.click(screen.getByRole("button", { name: /add more images/i }));
     await waitFor(() => {
       expect(screen.getByText(/staged \(3\)/i)).toBeInTheDocument();
@@ -84,44 +84,32 @@ describe("ImageFormatConverter", () => {
     expect(screen.queryByLabelText(/jpeg quality/i)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("JPEG"));
-    expect(
-      await screen.findByLabelText(/jpeg quality/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByLabelText(/jpeg quality/i)).toBeInTheDocument();
   });
 
   it("shows alpha handling only when the target lacks alpha (JPEG/BMP)", async () => {
     renderTool();
     await pickInto(["/tmp/a.png"]);
     // PNG default → no alpha handling.
-    expect(
-      screen.queryByText(/alpha handling/i),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/alpha handling/i)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("JPEG"));
-    expect(
-      await screen.findByText(/alpha handling/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/alpha handling/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("WebP (lossless)"));
     await waitFor(() => {
-      expect(
-        screen.queryByText(/alpha handling/i),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/alpha handling/i)).not.toBeInTheDocument();
     });
   });
 
   it("shows the SVG raster-size controls only when at least one staged input is .svg", async () => {
     renderTool();
     await pickInto(["/tmp/a.png"]);
-    expect(
-      screen.queryByText(/svg raster size/i),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/svg raster size/i)).not.toBeInTheDocument();
 
     pickConvertibleImagesMock.mockResolvedValueOnce(["/tmp/icon.svg"]);
     fireEvent.click(screen.getByRole("button", { name: /add more images/i }));
-    expect(
-      await screen.findByText(/svg raster size/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/svg raster size/i)).toBeInTheDocument();
   });
 
   it("forwards paths + Opts payload to convertImageFormat", async () => {
@@ -175,7 +163,9 @@ describe("ImageFormatConverter", () => {
     await screen.findByText(/1 converted, 1 skipped/i);
     fireEvent.click(screen.getByText(/skipped files \(1\)/i));
     expect(screen.getByText(/bad\.png/)).toBeInTheDocument();
-    expect(screen.getByText(/UnsupportedFormat: bad bytes/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/UnsupportedFormat: bad bytes/i),
+    ).toBeInTheDocument();
   });
 
   it("preserves the staged list when the orchestrator errors", async () => {
