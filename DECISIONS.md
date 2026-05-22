@@ -4,6 +4,42 @@ Choices, caveats, and recipes that affect future work — patterns we must keep 
 
 ---
 
+## 2026-05-22 — Phase F generalization audit: three extracts, one deliberate skip
+
+After image-format-converter shipped, three tools share enough boilerplate to look at. Four candidates audited; three extracted, one deliberately left inline.
+
+**Extracted:**
+
+- **`multitool_core::image::decode_oriented(source_ext, bytes)`** ([multitool-core/src/image.rs](src-tauri/multitool-core/src/image.rs)) — EXIF-orientation-aware decode + extension-based format fallback for magic-less formats (TGA). Both `images_to_pdf::convert` and `image_format_converter::convert` had their own copy with diverged signatures; the strictly-more-general form (with `source_ext`) wins. Errors are context-free; tools wrap with path context at the call site if they care. Companion: `image_to_app_err(err)`.
+- **`crate::ipc::run_streaming_job(app, registry, job_id, run)`** ([src-tauri/src/ipc/streaming_job.rs](src-tauri/src/ipc/streaming_job.rs)) — All three `#[tauri::command]` shims duplicated ~80 lines of "register → spawn_blocking → emit progress → unregister → emit complete/error". The helper is generic over the `Progress`/`Result` payload types; each shim is now a 6-line closure that calls its `run_job`. Required normalizing `image_format_converter::run_job`'s arg order to match the other two (`inputs, opts, cancel, on_progress`).
+- **`fileName(path)` + `fileStem(path)`** ([src/lib/utils.ts](src/lib/utils.ts)) — Two-line path helpers duplicated across both staging tools. Trivial extraction but utilities live in a single home so a fourth tool picks them up for free.
+
+**Skipped — staging-grid thumbnail card** (see next entry).
+
+**Skipped on principle** (not new audit findings):
+
+- **Job orchestrators** (`run_job` in each tool) — 1→N pages, N→1 PDF, N→N files. Three real variations on output shape; the inner loops aren't the same pattern.
+- **Quality / clamp option patterns** — DPI clamp in `pdf_to_images`, JPEG/SVG-px clamps in `image_format_converter`. `val.clamp(MIN, MAX)` already is the helper; the constants are per-tool.
+
+The rule for a fourth tool: consume from the shared surfaces above. If the duplication that emerges doesn't match any shared surface, leave it inline for one more tool before extracting — `bias toward (a)` from [CLAUDE.md → Scope discipline](CLAUDE.md).
+
+---
+
+## 2026-05-22 — Staging-grid thumbnail card stays inline (not extracted)
+
+`images_to_pdf` and `image_format_converter` both render a grid of `<li>{img, filename, × button}` cards over staged paths. Tempting to extract — but the wrappers diverge non-trivially:
+
+- `images_to_pdf` wraps the img + filename in a `<button>` that doubles as a `useSortable` drag handle for reordering. The remove button calls `stopPropagation()` to keep `×` clicks from initiating drags.
+- `image_format_converter` has no reordering at all (order is irrelevant for the conversion output).
+
+A shared `<ImageThumbCard>` would force optional drag-handle props (or two separate variants) onto a component whose visual core is only four lines of markup. Per the [adding-a-tool.md](docs/adding-a-tool.md) extraction bar — "extract only if (a) bodies are nearly identical, (b) future tools likely want the same surface, (c) extraction doesn't force divergent tools to grow optional knobs" — (c) fails here.
+
+The duplication is ~4 lines per consumer (the `<img>` + `<span>` content). Not zero, but the alternative — a multi-mode component or render-prop API — would be more code, not less. Reassess when a third staging tool lands; if it also doesn't need reorder, that tips (a)/(b) far enough to justify the extraction.
+
+The two utilities that *are* shared (`imageAssetUrl` + `allowImagePreview` from `src/lib/system.ts`, and `fileName` from `src/lib/utils.ts`) already cover the load-bearing pieces.
+
+---
+
 ## 2026-05-22 — WebP output is lossless only (no `webp_quality` option)
 
 `image` 0.25's WebP encoder (`image::codecs::webp::WebPEncoder::new_lossless`) is lossless-only — it exposes no quality knob. The image-format-converter tool reflects this: there is no `webp_quality` field in `Opts`, and `TargetFormat::Webp` always emits lossless WebP. Decode handles both lossy and lossless WebP inputs unchanged (decoder feature parity isn't the constraint).
