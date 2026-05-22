@@ -4,7 +4,10 @@
 //! without spinning up Tauri. This module is the thin glue that exposes
 //! cancellation to the webview.
 
+pub(crate) mod streaming_job;
+
 pub use multitool_core::ipc::{JobId, JobRegistry};
+pub(crate) use streaming_job::run_streaming_job;
 
 #[tauri::command]
 pub fn cancel_job(job_id: JobId, registry: tauri::State<'_, JobRegistry>) -> bool {
