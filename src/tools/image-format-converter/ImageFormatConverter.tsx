@@ -401,10 +401,10 @@ export function ImageFormatConverter() {
             </details>
           )}
           <div className="flex gap-3">
-            {state.result.first_output_dir !== null && (
+            {state.result.first_output_path !== null && (
               <Button
                 onClick={() =>
-                  void revealInFolder(state.result.first_output_dir ?? "")
+                  void revealInFolder(state.result.first_output_path ?? "")
                 }
               >
                 Open output folder

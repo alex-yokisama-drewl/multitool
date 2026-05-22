@@ -117,7 +117,7 @@ describe("ImageFormatConverter", () => {
       success_count: 1,
       skip_count: 0,
       skipped: [],
-      first_output_dir: "/tmp",
+      first_output_path: "/tmp/a.png",
       duration_ms: 7,
     });
 
@@ -152,7 +152,7 @@ describe("ImageFormatConverter", () => {
           error: { kind: "UnsupportedFormat", message: "bad bytes" },
         },
       ],
-      first_output_dir: "/tmp",
+      first_output_path: "/tmp/a.png",
       duration_ms: 1,
     });
 

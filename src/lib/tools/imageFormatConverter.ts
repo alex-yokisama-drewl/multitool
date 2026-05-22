@@ -59,13 +59,15 @@ export interface SkippedFile {
   error: AppErrorEnvelope;
 }
 
-// Mirrors `JobResult`. `first_output_dir` is `Option<PathBuf>` on the
-// Rust side — `null` when no file succeeded.
+// Mirrors `JobResult`. `first_output_path` is the FILE path of the first
+// successful output — pass it straight to `revealItemInDir` (which opens
+// the parent folder with the file highlighted). `null` when no file
+// succeeded.
 export interface JobResult {
   success_count: number;
   skip_count: number;
   skipped: SkippedFile[];
-  first_output_dir: string | null;
+  first_output_path: string | null;
   duration_ms: number;
 }
 
