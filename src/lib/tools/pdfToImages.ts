@@ -1,12 +1,13 @@
 // IPC wrapper for the PDF → Images tool.
 //
-// Boundary file: all `@tauri-apps/api` calls for this tool live here so
-// components stay presentational and Playwright can mock the IPC layer at
-// the `src/lib/` seam (see `ARCHITECTURE.md` §6). Sets the pattern future
-// tool wrappers will copy.
+// Boundary file: all `@tauri-apps/api` calls for this tool route through
+// `runJob` (see `../jobRunner.ts`) so components stay presentational and
+// Playwright can mock at the `src/lib/` seam (ARCHITECTURE.md §6).
+// The wrapper itself is intentionally thin — its only job is to name the
+// Rust command and shape the args; mechanics (jobId, progress filter,
+// abort wiring, unlisten) live in `runJob`.
 
-import { invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { runJob, type JobHooks } from "../jobRunner";
 
 export type Format = "png" | "jpeg";
 
@@ -34,46 +35,16 @@ export interface Progress {
 // unchanged after the shared-surfaces extraction.
 export type { AppErrorEnvelope } from "../errors";
 
-export interface ConvertHooks {
-  onProgress?: (progress: Progress) => void;
-  signal?: AbortSignal;
-}
-
-interface ProgressEventPayload {
-  job_id: string;
-  progress: Progress;
-}
+export type ConvertHooks = JobHooks<Progress>;
 
 export async function convertPdfToImages(
   path: string,
   opts: Opts,
-  { onProgress, signal }: ConvertHooks = {},
+  hooks: ConvertHooks = {},
 ): Promise<JobResult> {
-  signal?.throwIfAborted();
-
-  const jobId = crypto.randomUUID();
-
-  const unlisten: UnlistenFn = await listen<ProgressEventPayload>(
-    "tool:progress",
-    (event) => {
-      if (event.payload.job_id !== jobId) return;
-      onProgress?.(event.payload.progress);
-    },
+  return runJob<{ path: string; opts: Opts }, Progress, JobResult>(
+    "convert_pdf_to_images",
+    { path, opts },
+    hooks,
   );
-
-  const onAbort = () => {
-    void invoke("cancel_job", { jobId });
-  };
-  signal?.addEventListener("abort", onAbort, { once: true });
-
-  try {
-    return await invoke<JobResult>("convert_pdf_to_images", {
-      jobId,
-      path,
-      opts,
-    });
-  } finally {
-    unlisten();
-    signal?.removeEventListener("abort", onAbort);
-  }
 }
