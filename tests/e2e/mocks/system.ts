@@ -22,6 +22,13 @@ export function pickImageFiles(): Promise<string[] | null> {
   return Promise.resolve(MOCK_IMAGE_PATHS);
 }
 
+// Image Format Converter's broader picker. The mock returns the same set
+// as pickImageFiles — the converter doesn't care about ordering, so any
+// non-empty list drives the staging flow.
+export function pickConvertibleImages(): Promise<string[] | null> {
+  return Promise.resolve(MOCK_IMAGE_PATHS);
+}
+
 export function imageAssetUrl(path: string): string {
   // No Tauri asset protocol in a plain browser — return a harmless URL
   // so `<img>` rendering doesn't blow up. The spec doesn't assert on
