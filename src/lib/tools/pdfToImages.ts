@@ -29,19 +29,10 @@ export interface Progress {
   total: number;
 }
 
-// Mirrors the `{ kind, message }` shape from `AppError`'s custom Serialize
-// impl (`multitool-core/src/error.rs`). `kind` is the discriminant React
-// components can branch on; `message` is the toast string.
-export interface AppErrorEnvelope {
-  kind:
-    | "FileNotFound"
-    | "PermissionDenied"
-    | "UnsupportedFormat"
-    | "ProcessingFailed"
-    | "Encrypted"
-    | "Cancelled";
-  message: string;
-}
+// Re-exported from `@/lib/errors` so existing consumers of this wrapper
+// (the tool's `types.ts` barrel and the e2e mock) keep their import paths
+// unchanged after the shared-surfaces extraction.
+export type { AppErrorEnvelope } from "../errors";
 
 export interface ConvertHooks {
   onProgress?: (progress: Progress) => void;

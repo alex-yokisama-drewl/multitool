@@ -2,7 +2,7 @@
 
 > Ephemeral working doc. Deleted when the tool ships, alongside [images-to-pdf.md](images-to-pdf.md). The brief is the *what*; this is the *how* and the *where we are*. Update inline as commits land — tick boxes, append notes, record blockers. Architectural decisions that emerge mid-build go to [../../DECISIONS.md](../../DECISIONS.md), not this file.
 
-**Status:** 2026-05-22 — Phase A not started. Branch `feat/images-to-pdf` checked out, brief landed at [images-to-pdf.md](images-to-pdf.md).
+**Status:** 2026-05-22 — Phase A in progress. A1 landed; A2 (runJob extraction) next.
 
 ## Conventions for this doc
 
@@ -17,7 +17,7 @@
 
 Goal: extract the shared TS scaffolding the second tool wants, and migrate PDF→Images onto it commit-by-commit so each step leaves all existing tests green. Proves the extractions work on the existing tool before images-to-pdf uses them.
 
-- [ ] **A1. `refactor(lib): extract AppErrorEnvelope to src/lib/errors.ts`**
+- [x] **A1. `refactor(lib): extract AppErrorEnvelope to src/lib/errors.ts`**
   - Move the `AppErrorEnvelope` type out of [src/lib/tools/pdfToImages.ts](../../src/lib/tools/pdfToImages.ts) into a new [src/lib/errors.ts](../../src/lib/errors.ts).
   - `pdfToImages.ts` re-imports; [src/tools/pdf-to-images/types.ts](../../src/tools/pdf-to-images/types.ts) re-exports unchanged.
   - All existing Vitest + Playwright lanes pass with no test edits.
@@ -155,4 +155,5 @@ Goal: tool view with staging area, reorder, add-more, remove, and the Create-PDF
 
 *(One line per noteworthy event: phase boundary, discovery moment, scope shift. Newest first.)*
 
+- 2026-05-22 — A1 landed: `AppErrorEnvelope` moved to [../../src/lib/errors.ts](../../src/lib/errors.ts); `pdfToImages.ts` now re-exports so `types.ts` + e2e mock import paths stay unchanged. All gates green.
 - 2026-05-22 — Plan written; branch `feat/images-to-pdf` ready, brief landed. Phase A starts on user go-ahead.
