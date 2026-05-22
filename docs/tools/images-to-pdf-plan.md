@@ -2,7 +2,7 @@
 
 > Ephemeral working doc. Deleted when the tool ships, alongside [images-to-pdf.md](images-to-pdf.md). The brief is the *what*; this is the *how* and the *where we are*. Update inline as commits land — tick boxes, append notes, record blockers. Architectural decisions that emerge mid-build go to [../../DECISIONS.md](../../DECISIONS.md), not this file.
 
-**Status:** 2026-05-22 — Phase B in progress. B1+B2 landed; B3 (@dnd-kit dep) next.
+**Status:** 2026-05-22 — Phase B complete. Phase C (Rust pure logic in multitool-core) next.
 
 ## Conventions for this doc
 
@@ -51,7 +51,7 @@ Goal: get the picker, capability grants, and new dep in place before any new too
   - DECISIONS entry written: [../../DECISIONS.md](../../DECISIONS.md) → "Asset protocol scope: dynamic per-pick".
   - Frontend wrapper deferred to E2 (the call site that needs it).
 
-- [ ] **B3. `chore(deps): add @dnd-kit/sortable`**
+- [x] **B3. `chore(deps): add @dnd-kit/sortable`**
   - `pnpm add @dnd-kit/sortable @dnd-kit/core` (peer required).
   - DECISIONS entry: why @dnd-kit over native HTML5 / react-beautiful-dnd. Cite a11y + maintenance status.
 
@@ -157,6 +157,7 @@ Goal: tool view with staging area, reorder, add-more, remove, and the Create-PDF
 
 *(One line per noteworthy event: phase boundary, discovery moment, scope shift. Newest first.)*
 
+- 2026-05-22 — B3 landed: `@dnd-kit/sortable` + `@dnd-kit/core` added. DECISIONS entry "Staging-area reorder: @dnd-kit/sortable over native HTML5 / react-beautiful-dnd" recorded (a11y mandate + react-beautiful-dnd archived + dep-discipline trade-off acknowledged). Phase B exit gate green (`pnpm tauri build --no-bundle` confirms no wedge from the new deps).
 - 2026-05-22 — **Discovery + B2 landed.** Brief's "fs:asset" was a misnomer (no such Tauri 2.x permission); real grant is `app.security.assetProtocol` in `tauri.conf.json`. Dynamic per-pick IS supported via `Manager::asset_protocol_scope().allow_file(...)`. Picked dynamic. New `allow_image_preview` command validates extensions server-side and calls `allow_file` per picked path. Required adding `protocol-asset` to the `tauri` crate features. DECISIONS entry recorded. Frontend wrapper deferred to E2. Exit gate green (rust fmt/clippy/test + `pnpm tauri build --no-bundle` + frontend lint/typecheck).
 - 2026-05-22 — B1 landed: `pickImageFiles()` added to [../../src/lib/system.ts](../../src/lib/system.ts). Multi-select, `.png/.jpg/.jpeg/.webp` filter, returns `null` on cancel / `string[]` on confirm. No unit test per plan (boundary file, mocked by Playwright).
 - 2026-05-22 — A3 landed: `JobProgress` extracted to [../../src/components/JobProgress.tsx](../../src/components/JobProgress.tsx) (props `{ current, total, label?, onCancel }`); handles the pre-first-event "starting…" case internally so Cancel stays available throughout `running`. PdfToImages threads through with `label="page"`. 5 new component tests; existing PdfToImages tests pass untouched. Phase A gate (lint/test/typecheck/e2e) green.

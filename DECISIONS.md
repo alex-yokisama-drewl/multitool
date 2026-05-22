@@ -4,6 +4,22 @@ Choices, caveats, and recipes that affect future work — patterns we must keep 
 
 ---
 
+## 2026-05-22 — Staging-area reorder: `@dnd-kit/sortable` over native HTML5 / react-beautiful-dnd
+
+Images → PDF stages picked images in a grid the user reorders before generating the PDF. The brief requires both mouse AND keyboard reorder, so the drag-and-drop choice has to be accessible from day one. Picked `@dnd-kit/sortable` (+ `@dnd-kit/core` peer).
+
+**vs the browser-native HTML5 DnD API:** poor accessibility (no built-in keyboard support, screen-reader announcements need hand-rolling), inconsistent across browsers and platforms, the drag-image ghost is hard to style cleanly. Building a sortable grid on top is doable but reinvents what `@dnd-kit` solves out of the box.
+
+**vs `react-beautiful-dnd`:** archived by Atlassian in 2023; React 18 strict-mode issues with no fix forthcoming; no React 19 story. Not viable for a new module.
+
+**vs `react-dnd`:** general-purpose drag-and-drop, but the standard HTML5 backend carries the same a11y limitations as native, and the sortable-list use case wants extra backend setup. API surface is heavier than `@dnd-kit`'s `useSortable` hook for the same UX.
+
+**`@dnd-kit` specifics that matter:** keyboard reorder built in (arrow keys, space to pick up/drop), screen-reader announcements, touch/pointer sensors, ~30 KB gzipped, actively maintained. The sortable subpackage exposes `SortableContext` + `useSortable` which the staging grid in Phase E3 will use directly.
+
+**Trade-off acknowledged:** the project has been holding the line on "no dependencies without a clear reason in the PR description". Two packages added (`@dnd-kit/core` is a required peer of `@dnd-kit/sortable`). Justification: brief mandates keyboard reorder, build-it-yourself a11y is a multi-day side quest, dep is maintained.
+
+---
+
 ## 2026-05-22 — Asset protocol scope: dynamic per-pick, not static glob
 
 Webview thumbnail previews for picked images (`convertFileSrc(path)` in the Images → PDF staging grid) require the resolved path to fall within Tauri's asset-protocol scope. The narrowest grant we can give the webview is: nothing by default, allow each path the user actually picked. Implemented as:
