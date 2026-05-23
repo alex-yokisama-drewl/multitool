@@ -4,6 +4,27 @@ Choices, caveats, and recipes that affect future work — patterns we must keep 
 
 ---
 
+## 2026-05-23 — pdfium: bundle native binary as a Tauri resource
+
+The v0.2.0 installer shipped without `pdfium.dll` next to the binary. `multitool_core::pdfium::instance` baked an `env!("PDFIUM_LIB_PATH")` pointing into the GitHub Actions runner's `target/.../OUT_DIR/pdfium/...`, so on an end user's machine `LoadLibraryExW` returned error 126 ("module not found") and PDF→Images failed with `pdfium bind failed: LoadLibraryError(...)`. Image Format Converter and Images→PDF were unaffected (only PDF→Images uses pdfium).
+
+Fix (landed in v0.2.1):
+
+- `multitool-core::pdfium::init(path)` accepts a runtime path; `instance()` prefers it and falls back to the compile-time env var (so dev / `cargo test` keep working without setup).
+- [`src-tauri/build.rs`](src-tauri/build.rs) downloads the bblanchon binary into `OUT_DIR` (mirroring `multitool-core/build.rs`) and copies it to `src-tauri/resources/pdfium/{libpdfium.so,libpdfium.dylib,pdfium.dll}`. `resources/pdfium/` is gitignored — it's a build artifact.
+- [`tauri.conf.json`](src-tauri/tauri.conf.json) bundles `resources/pdfium/*`.
+- The Tauri shell's `.setup` hook calls `pdfium::init(app.path().resolve("resources/pdfium/<file>", BaseDirectory::Resource))` before any command runs.
+
+Two build scripts now download the same archive (cached per `OUT_DIR`); duplicating the ~30 lines is cheaper than cross-crate metadata via `links =` for a one-off pin. If the pdfium pin moves, update both `build.rs` files together. Adding a "load the bundled installer and exercise PDF→Images" e2e step would have caught this — captured as a follow-up, not actioned here.
+
+---
+
+## 2026-05-23 — Known caveat: MSI installer aborted with "another installation in progress" on one Windows machine
+
+v0.2.0's `multitool_0.2.0_x64_en-US.msi` failed to install on the maintainer's Windows machine — Windows Installer reported another install was in progress and aborted. The `_x64-setup.exe` (NSIS) installer worked on the same machine. Almost certainly a stuck Windows Installer service or transient MSI lock on that host, not a bundle problem (Tauri's MSI is a stock WiX layout). Note for future testing: if this reproduces on a clean Windows runner / second machine, investigate WiX config; otherwise keep treating it as host-specific. Both `.msi` and `.exe` are still attached to releases.
+
+---
+
 ## 2026-05-22 — Phase F generalization audit: three extracts, one deliberate skip
 
 After image-format-converter shipped, three tools share enough boilerplate to look at. Four candidates audited; three extracted, one deliberately left inline.

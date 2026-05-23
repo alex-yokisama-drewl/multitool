@@ -17,6 +17,10 @@ use std::path::{Path, PathBuf};
 
 // Matches pdfium-render 0.9.1's default `pdfium_7763` feature. Bump these
 // together — the bindings and the binary must agree on the ABI.
+//
+// `src-tauri/build.rs` mirrors this download to stage the binary as a Tauri
+// resource for bundled installs (DECISIONS.md → "pdfium: bundle native
+// binary as a Tauri resource"). Bump `PDFIUM_TAG` in both files together.
 const PDFIUM_TAG: &str = "chromium/7763";
 
 fn main() {

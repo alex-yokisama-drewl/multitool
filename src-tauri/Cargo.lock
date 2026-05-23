@@ -2318,8 +2318,10 @@ dependencies = [
 name = "multitool"
 version = "0.2.0"
 dependencies = [
+ "flate2",
  "multitool-core",
  "serde",
+ "tar",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
@@ -2328,6 +2330,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "ureq",
 ]
 
 [[package]]
