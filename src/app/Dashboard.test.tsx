@@ -52,4 +52,26 @@ describe("Dashboard", () => {
     const headings = screen.getAllByRole("heading", { level: 2 });
     expect(headings.map((h) => h.textContent)).toEqual(["PDF", "Image"]);
   });
+
+  it("applies the registered tile color token to each tile", () => {
+    render(
+      <MemoryRouter>
+        <Dashboard />
+      </MemoryRouter>,
+    );
+
+    const pdfToImages = screen.getByRole("link", { name: /pdf → images/i });
+    const imagesToPdf = screen.getByRole("link", { name: /images → pdf/i });
+    const imageFormat = screen.getByRole("link", {
+      name: /image format converter/i,
+    });
+
+    expect(pdfToImages.getAttribute("data-tile-color")).toBe("rose");
+    expect(imagesToPdf.getAttribute("data-tile-color")).toBe("amber");
+    expect(imageFormat.getAttribute("data-tile-color")).toBe("sky");
+
+    // Inline style binds the CSS var so the palette in globals.css is the
+    // single source of truth for the actual color value.
+    expect(pdfToImages.style.backgroundColor).toBe("var(--tile-rose)");
+  });
 });

@@ -31,15 +31,20 @@ export function Dashboard() {
             </h2>
             <hr className="flex-1 border-border" />
           </div>
-          <ul className="mt-4 grid gap-3 sm:grid-cols-2">
+          <ul className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
             {section.tools.map((tool) => (
               <li key={tool.id}>
                 <Link
                   to={tool.route}
-                  className="block rounded-lg border border-border p-4 hover:bg-accent"
+                  data-tile-color={tool.color}
+                  style={{
+                    backgroundColor: `var(--tile-${tool.color})`,
+                    color: `var(--tile-${tool.color}-fg)`,
+                  }}
+                  className="flex aspect-square flex-col justify-end rounded-lg p-4 transition-opacity hover:opacity-90"
                 >
                   <div className="text-sm font-medium">{tool.name}</div>
-                  <div className="mt-1 text-xs text-muted-foreground">
+                  <div className="mt-1 text-xs opacity-70">
                     {tool.description}
                   </div>
                 </Link>

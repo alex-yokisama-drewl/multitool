@@ -81,6 +81,24 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* Dashboard tile palette. Soft distinct pastels; each token ships a
+     foreground pair tuned for readability. Add a new entry here when the
+     existing palette is exhausted — repeated colors between categories are
+     fine, so headroom is only needed once you have more than ~6 tools per
+     category. */
+  --tile-sky: oklch(0.94 0.04 230);
+  --tile-sky-fg: oklch(0.35 0.1 230);
+  --tile-amber: oklch(0.95 0.06 85);
+  --tile-amber-fg: oklch(0.35 0.1 85);
+  --tile-rose: oklch(0.94 0.05 15);
+  --tile-rose-fg: oklch(0.35 0.1 15);
+  --tile-emerald: oklch(0.94 0.05 150);
+  --tile-emerald-fg: oklch(0.35 0.1 150);
+  --tile-violet: oklch(0.94 0.04 290);
+  --tile-violet-fg: oklch(0.35 0.1 290);
+  --tile-teal: oklch(0.94 0.04 195);
+  --tile-teal-fg: oklch(0.35 0.1 195);
 }
 
 .dark {

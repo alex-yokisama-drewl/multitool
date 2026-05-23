@@ -6,6 +6,7 @@ export const imagesToPdfTool: Tool = {
   name: "Images → PDF",
   description: "Assemble images into a single PDF, one image per page.",
   category: "pdf",
+  color: "amber",
   route: "/tools/images-to-pdf",
   component: ImagesToPdf,
 };
