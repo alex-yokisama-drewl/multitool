@@ -3,7 +3,7 @@ import { ImageFormatConverter } from "./ImageFormatConverter";
 
 export const imageFormatConverterTool: Tool = {
   id: "image-format-converter",
-  name: "Image Format Converter",
+  name: "Format Converter",
   description: "Convert images between formats (PNG, JPEG, WebP, BMP, TIFF).",
   category: "image",
   color: "sky",

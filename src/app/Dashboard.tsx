@@ -31,7 +31,7 @@ export function Dashboard() {
             </h2>
             <hr className="flex-1 border-border" />
           </div>
-          <ul className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+          <ul className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5">
             {section.tools.map((tool) => (
               <li key={tool.id}>
                 <Link
@@ -41,11 +41,13 @@ export function Dashboard() {
                     backgroundColor: `var(--tile-${tool.color})`,
                     color: `var(--tile-${tool.color}-fg)`,
                   }}
-                  className="flex aspect-square flex-col justify-end rounded-lg p-4 transition-opacity hover:opacity-90"
+                  className="block aspect-square overflow-hidden rounded-lg shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-lg"
                 >
-                  <div className="text-sm font-medium">{tool.name}</div>
-                  <div className="mt-1 text-xs opacity-70">
-                    {tool.description}
+                  <div className="flex h-full flex-col p-4">
+                    <div className="text-sm font-medium">{tool.name}</div>
+                    <div className="mt-10 line-clamp-3 text-xs opacity-70">
+                      {tool.description}
+                    </div>
                   </div>
                 </Link>
               </li>

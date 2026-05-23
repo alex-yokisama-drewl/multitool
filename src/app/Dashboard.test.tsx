@@ -18,7 +18,7 @@ describe("Dashboard", () => {
       screen.getByRole("link", { name: /images → pdf/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: /image format converter/i }),
+      screen.getByRole("link", { name: /format converter/i }),
     ).toBeInTheDocument();
   });
 
@@ -44,7 +44,7 @@ describe("Dashboard", () => {
     ).toBeInTheDocument();
     expect(
       within(imageSection).getByRole("link", {
-        name: /image format converter/i,
+        name: /format converter/i,
       }),
     ).toBeInTheDocument();
 
@@ -63,7 +63,7 @@ describe("Dashboard", () => {
     const pdfToImages = screen.getByRole("link", { name: /pdf → images/i });
     const imagesToPdf = screen.getByRole("link", { name: /images → pdf/i });
     const imageFormat = screen.getByRole("link", {
-      name: /image format converter/i,
+      name: /format converter/i,
     });
 
     expect(pdfToImages.getAttribute("data-tile-color")).toBe("rose");
