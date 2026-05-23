@@ -59,7 +59,7 @@ System-level wrappers (file picker, reveal-in-folder) live in [`src/lib/system.t
 
 - Folder: `src/tools/<tool-id>/`
 - Files:
-  - `index.ts` — exports `Tool` metadata (`{ id, name, description, category, route, component }`).
+  - `index.ts` — exports `Tool` metadata (`{ id, name, description, category, color, route, component }`). `category` is the file type the tool handles (`"pdf"`, `"image"`, …) — tiles on the dashboard are grouped by category. If your tool fits an existing category, no shared edit is needed; introducing a brand-new category means extending the `ToolCategory` union + `toolCategories` list in [../src/tools/registry.ts](../src/tools/registry.ts) (a deliberate, narrow shared edit, not a registry-pattern violation). `color` is a soft tile-background token from the `TileColor` union in the same file; the actual color values live as `--tile-<name>` / `--tile-<name>-fg` pairs in [../src/app/globals.css](../src/app/globals.css). Repeats across tools are fine; pick one that's visually distinct from neighbours in the same category. Add a new color = add the CSS-var pair + extend the union.
   - `<ToolName>.tsx` — presentational; all IPC goes through wrappers in `src/lib/`. State machine pattern recommended: `idle → picked → running → done | error` with the error arm preserving the picked file so the user can retry without re-picking. Worked example: [`src/tools/pdf-to-images/PdfToImages.tsx`](../src/tools/pdf-to-images/PdfToImages.tsx).
   - `types.ts` — thin re-exports of the wrapper's types so the tool folder is self-describing.
 - Use primitives from [`src/components/ui/`](../src/components/ui/) (shadcn) and shared components in [`src/components/`](../src/components/) — don't reach into another tool's folder.

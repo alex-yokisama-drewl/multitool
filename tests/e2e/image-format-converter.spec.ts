@@ -10,7 +10,7 @@ import { expect, test } from "@playwright/test";
 test("converts staged images and surfaces the done state", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByRole("link", { name: /image format converter/i }).click();
+  await page.getByRole("link", { name: /format converter/i }).click();
 
   // Idle → staging via the picker mock.
   await page.getByRole("button", { name: /^select images$/i }).click();
