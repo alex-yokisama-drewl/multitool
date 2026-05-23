@@ -5,7 +5,7 @@ export const imageFormatConverterTool: Tool = {
   id: "image-format-converter",
   name: "Image Format Converter",
   description: "Convert images between formats (PNG, JPEG, WebP, BMP, TIFF).",
-  category: "convert",
+  category: "image",
   route: "/tools/image-format-converter",
   component: ImageFormatConverter,
 };

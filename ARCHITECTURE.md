@@ -56,7 +56,7 @@ Each tool is a self-contained module on both sides of the IPC boundary:
 ```
 src/tools/
   pdf-to-images/
-    index.ts          # registry metadata: { id, name, category, icon, route, component }
+    index.ts          # registry metadata: { id, name, description, category, route, component }
     PdfToImages.tsx   # UI component
     types.ts          # shared input/output contracts (mirrors Rust types)
   images-to-pdf/
