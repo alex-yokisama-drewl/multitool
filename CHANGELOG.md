@@ -2,6 +2,12 @@
 
 All notable changes to this project follow [Semantic Versioning](https://semver.org/) and are sourced from Conventional Commit history.
 
+## [0.2.1] - 2026-05-23
+
+### Bug fixes
+
+- **pdfium:** Bundle native binary as a Tauri resource (#12)
+
 ## [0.2.0] - 2026-05-23
 
 ### Bug fixes
