@@ -25,6 +25,13 @@ crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+# Build script downloads the platform-matched pdfium binary from
+# bblanchon/pdfium-binaries and stages it under `resources/pdfium/` so
+# `tauri build` bundles it next to the installed binary. Mirrors the deps
+# in `multitool-core/build.rs` — keep the two in sync.
+ureq = "2"
+flate2 = "1"
+tar = "0.4"
 
 [dependencies]
 multitool-core = { path = "multitool-core" }
