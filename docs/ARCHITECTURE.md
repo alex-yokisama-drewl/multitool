@@ -74,7 +74,7 @@ Playwright drives the Vite dev server with the Tauri IPC layer mocked at the `sr
 
 ## 5. CI / Release Pipeline
 
-- **`.github/workflows/ci.yml`** — runs on PR and push-to-`master` across `ubuntu-latest`, `macos-latest`, `windows-latest` (`fail-fast: false`). Steps mirror the [../CLAUDE.md](../CLAUDE.md) per-PR checklist: fmt → clippy (workspace) → `cargo test -p multitool-core --all-targets` → pnpm lint → typecheck → vitest → `pnpm tauri build --no-bundle`.
+- **`.github/workflows/ci.yml`** — runs on PR across `ubuntu-latest`, `macos-latest`, `windows-latest` (`fail-fast: false`). Steps mirror the [../CLAUDE.md](../CLAUDE.md) per-PR checklist: fmt → clippy (workspace) → `cargo test -p multitool-core --all-targets` → pnpm lint → typecheck → vitest → `pnpm tauri build --no-bundle`. No push-to-master trigger — squash-merges land the same diff CI already validated on the PR.
 - **`.github/workflows/release.yml`** — fires on `v*` tag push, uses the same matrix, builds per-platform artifacts via `tauri-apps/tauri-action`, and attaches them to a **draft** GitHub Release (`releaseDraft: true`). Tags containing `-` (e.g. `v0.1.0-scaffold`) are auto-marked prerelease. No macOS signing/notarization.
 - **Branch protection on `master`** (classic) — requires `linux` / `macos` / `windows` contexts and linear history; force-push and deletion blocked. `enforce_admins: false` so the owner can override when needed.
 
