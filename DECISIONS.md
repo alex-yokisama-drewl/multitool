@@ -19,12 +19,6 @@ Two build scripts now download the same archive (cached per `OUT_DIR`); duplicat
 
 ---
 
-## 2026-05-23 — Known caveat: MSI installer aborted with "another installation in progress" on one Windows machine
-
-v0.2.0's `multitool_0.2.0_x64_en-US.msi` failed to install on the maintainer's Windows machine — Windows Installer reported another install was in progress and aborted. The `_x64-setup.exe` (NSIS) installer worked on the same machine. Almost certainly a stuck Windows Installer service or transient MSI lock on that host, not a bundle problem (Tauri's MSI is a stock WiX layout). Note for future testing: if this reproduces on a clean Windows runner / second machine, investigate WiX config; otherwise keep treating it as host-specific. Both `.msi` and `.exe` are still attached to releases.
-
----
-
 ## 2026-05-22 — Phase F generalization audit: three extracts, one deliberate skip
 
 After image-format-converter shipped, three tools share enough boilerplate to look at. Four candidates audited; three extracted, one deliberately left inline.
