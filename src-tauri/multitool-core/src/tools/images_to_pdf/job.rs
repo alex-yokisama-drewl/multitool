@@ -2,9 +2,8 @@
 //!
 //! [`run_job`] reads each picked image off disk, threads the bytes into
 //! [`super::convert::convert`], and writes the assembled PDF to
-//! `unique_path({first_image_parent}/{first_image_stem}.pdf)` per the
-//! brief's "first image wins" output rule (`docs/tools/images-to-pdf.md` →
-//! Output).
+//! `unique_path({first_image_parent}/{first_image_stem}.pdf)` — the first
+//! image's folder + stem wins, even when inputs span directories.
 //!
 //! **No partial PDF ever exists on cancel.** Unlike PDF → Images (which
 //! leaves already-written pages on disk), this orchestrator only writes the
@@ -29,7 +28,7 @@ use crate::error::{AppError, AppResult};
 use crate::fs::unique_path;
 
 /// Progress event payload — `image` is 1-based to match the UX copy
-/// ("image 3 / 7" from `docs/tools/images-to-pdf.md` → Running).
+/// ("image 3 / 7").
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct Progress {
     pub image: u32,
@@ -186,8 +185,8 @@ mod tests {
 
     #[test]
     fn first_image_directory_wins_even_when_inputs_span_folders() {
-        // Per docs/tools/images-to-pdf.md → Output: the *first* image's
-        // folder determines the output location, not a common ancestor.
+        // The *first* image's folder determines the output location, not a
+        // common ancestor.
         let tmp = tempfile::tempdir().unwrap();
         let dir_a = tmp.path().join("alpha");
         let dir_b = tmp.path().join("beta");

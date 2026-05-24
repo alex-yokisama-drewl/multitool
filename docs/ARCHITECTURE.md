@@ -1,6 +1,6 @@
 # Multitool — Architecture
 
-How the app is built. Product scope and acceptance criteria live in [ASSIGNMENT.md](ASSIGNMENT.md); the operating agreement for AI-assisted contributions lives in [CLAUDE.md](CLAUDE.md); concrete decision history (including the "why we chose X" entries that don't fit here) lives in [DECISIONS.md](DECISIONS.md).
+How the app is built. The operating agreement for AI-assisted contributions lives in [../CLAUDE.md](../CLAUDE.md); concrete decision history (including the "why we chose X" entries that don't fit here) lives in [DECISIONS.md](DECISIONS.md); forward-looking plans and ideas live in [plans/BACKLOG.md](plans/BACKLOG.md).
 
 ## 1. Tech Stack
 
@@ -21,71 +21,34 @@ Frontend alternative considered: Svelte (smaller bundle), not chosen because the
 
 ## 2. Crate / Workspace Layout
 
-The cargo workspace lives at `src-tauri/Cargo.toml` (root-crate workspace; no `default-members`).
+The cargo workspace lives at `src-tauri/Cargo.toml` (no `default-members`). Two crates:
 
-```
-src-tauri/
-├── Cargo.toml             # workspace root + Tauri shell crate `multitool`
-├── tauri.conf.json
-├── src/
-│   ├── lib.rs             # run(), init_tracing()
-│   ├── main.rs            # thin shim around multitool_lib::run()
-│   ├── ipc/               # cancel_job (#[tauri::command])
-│   ├── tools/             # register_commands + per-tool command shims
-│   └── fs/                # reserved for path resolution that needs Tauri APIs
-└── multitool-core/        # pure-logic rlib (no tauri dep)
-    ├── src/
-    │   ├── lib.rs
-    │   ├── error.rs       # AppError + serialization
-    │   ├── ipc.rs         # JobId, JobRegistry
-    │   ├── fs.rs          # unique_path (pure path helpers)
-    │   ├── pdfium.rs      # process-wide pdfium singleton
-    │   └── tools/         # per-tool pure logic (convert / writer / job)
-    ├── build.rs           # downloads + pins the pdfium native binary
-    └── tests/             # cross-crate smoke tests + PDF fixtures
-```
+- **`multitool`** — the Tauri shell. Entry points (`lib.rs`/`main.rs`), `ipc/` for cancellation glue + the streaming-job shim helper, `tools/` for per-tool `#[tauri::command]` wrappers, `build.rs` that downloads and bundles the pdfium binary as a Tauri resource.
+- **`multitool-core`** — pure-logic rlib, no `tauri` dep. `tools/` for per-tool conversion + orchestration logic, plus `error.rs`, `ipc.rs` (`JobId` / `JobRegistry`), `fs.rs` (pure path helpers), `pdfium.rs` (process-wide singleton), and its own `build.rs` that downloads + pins the pdfium binary for dev/test.
 
-`multitool-core` exists to honour the "processing logic = pure functions, testable without spinning up Tauri" rule (see §3.1 below and [DECISIONS.md](DECISIONS.md) → "Workspace split"). It also keeps the Tauri runtime out of test-exe build/launch on Windows, which is the proximate reason it was extracted.
+`multitool-core` exists so processing logic stays pure-function and testable without spinning up Tauri (see §3.1) and to keep the Tauri runtime out of the test exe — the shell's test exe doesn't launch on the Windows CI runner ([DECISIONS.md](DECISIONS.md) → "Workspace split").
 
 ## 3. Architecture Patterns
 
 ### 3.1 Tool Registry Pattern
 
-Each tool is a self-contained module on both sides of the IPC boundary:
+Each tool is a self-contained module on both sides of the IPC boundary: a Rust folder under `multitool-core/src/tools/<tool_id>/` for pure logic (`convert.rs`, `job.rs`) plus a thin `#[tauri::command]` shim under `src-tauri/src/tools/<tool_id>/`, and a TS folder under `src/tools/<tool-id>/` with registry metadata (`index.ts`), the presentational component, and a `types.ts` mirroring the Rust types.
 
-```
-src/tools/
-  pdf-to-images/
-    index.ts          # registry metadata: { id, name, description, category, route, component }
-    PdfToImages.tsx   # UI component
-    types.ts          # shared input/output contracts (mirrors Rust types)
-  images-to-pdf/
-    ...
-
-src-tauri/src/tools/
-  pdf_to_images/
-    mod.rs            # exposes #[tauri::command] entry points
-    convert.rs        # pure processing logic, testable without Tauri
-  images_to_pdf/
-    ...
-```
-
-A central `src/tools/registry.ts` imports each tool's metadata and exposes the list to the dashboard. On the Rust side, `src-tauri/src/tools/mod.rs::register_commands` aggregates `generate_handler!` invocations and is called once from `lib.rs::run()`. **Adding a new tool = adding one folder on each side and one import line in each registry.** No edits to shared shell/routing code.
+A central `src/tools/registry.ts` imports each tool's metadata and exposes the list to the dashboard. On the Rust side, `src-tauri/src/tools/mod.rs::register_commands` aggregates `generate_handler!` invocations and is called once from `lib.rs::run()`. **Adding a new tool = one folder per side + one import line per registry, no edits to shared shell/routing code.** Step-by-step playbook: [ADDING_A_TOOL.md](ADDING_A_TOOL.md).
 
 ### 3.2 Process Model
 
-- **Webview (UI):** rendering only; no file I/O, no heavy computation
-- **Rust main:** Tauri commands dispatch work to Tokio tasks
-- **Worker tasks:** long-running operations run async; progress streams to UI via Tauri events (`tool:progress`, `tool:complete`, `tool:error`)
+- **Webview (UI):** rendering only; no file I/O, no heavy computation. All `@tauri-apps/api` calls go through wrappers in `src/lib/` — components stay presentational and that boundary is where Playwright mocks the Tauri layer.
+- **Rust main:** Tauri commands dispatch work to Tokio tasks.
+- **Worker tasks:** long-running operations run async; progress streams to UI via Tauri events (`tool:progress`, `tool:complete`, `tool:error`).
 - **Cancellation:** every long-running command takes a cancellation token tied to a `JobId`. The token registry lives in `multitool_core::ipc::JobRegistry`; UI can cancel mid-operation via the `cancel_job` Tauri command.
-- **Concurrency:** one active job per tool by default; user can navigate away while it runs
+- **Concurrency:** one active job per tool by default; user can navigate away while it runs.
 
 ### 3.3 File I/O Conventions
 
-- **Default output location:** same directory as the input
-- **Naming:** `{stem}_{tool_suffix}.{ext}` (e.g., `report.pdf` → folder `report_pages/` containing `page_001.png`, ...)
-- **Duplicate handling:** if the target exists, append ` (1)`, ` (2)`, ... until a free name is found. Never overwrite silently.
-- **Output override:** user may pick a different destination per operation; this is a secondary UI affordance, not the default path
+- **Default output location:** same directory as the input.
+- **Naming:** `{stem}_{tool_suffix}.{ext}` (e.g., `report.pdf` → folder `report_pages/` containing `page_001.png`, …).
+- **Duplicate handling:** if the target exists, append ` (1)`, ` (2)`, … until a free name is found. Never overwrite silently.
 
 ### 3.4 Error Handling
 
@@ -111,21 +74,8 @@ Playwright drives the Vite dev server with the Tauri IPC layer mocked at the `sr
 
 ## 5. CI / Release Pipeline
 
-- **`.github/workflows/ci.yml`** — runs on PR and push-to-`master` across `ubuntu-latest`, `macos-latest`, `windows-latest` (`fail-fast: false`). Steps mirror the [CLAUDE.md](CLAUDE.md) per-PR checklist: fmt → clippy (workspace) → `cargo test -p multitool-core --all-targets` → pnpm lint → typecheck → vitest → `pnpm tauri build --no-bundle`.
+- **`.github/workflows/ci.yml`** — runs on PR and push-to-`master` across `ubuntu-latest`, `macos-latest`, `windows-latest` (`fail-fast: false`). Steps mirror the [../CLAUDE.md](../CLAUDE.md) per-PR checklist: fmt → clippy (workspace) → `cargo test -p multitool-core --all-targets` → pnpm lint → typecheck → vitest → `pnpm tauri build --no-bundle`.
 - **`.github/workflows/release.yml`** — fires on `v*` tag push, uses the same matrix, builds per-platform artifacts via `tauri-apps/tauri-action`, and attaches them to a **draft** GitHub Release (`releaseDraft: true`). Tags containing `-` (e.g. `v0.1.0-scaffold`) are auto-marked prerelease. No macOS signing/notarization.
 - **Branch protection on `master`** (classic) — requires `linux` / `macos` / `windows` contexts and linear history; force-push and deletion blocked. `enforce_admins: false` so the owner can override when needed.
 
 `-p multitool-core` on `cargo test` is mandatory: the Tauri shell's test exe fails to launch on the Windows CI runner. See [DECISIONS.md](DECISIONS.md) → "Workspace split" and "No default-members".
-
-## 6. Frontend Directory Skeleton
-
-```
-src/
-├── app/           # App shell, routing, layout
-├── components/    # Shared UI (Button, Toast, ...)
-├── tools/         # One folder per tool + registry.ts
-├── lib/           # Tauri IPC wrappers, utilities
-└── main.tsx
-```
-
-`src/lib/` is the boundary for all `@tauri-apps/api` calls. Components stay presentational and route IPC through `src/lib/` wrappers. This boundary is also where Playwright mocks the Tauri layer for e2e.

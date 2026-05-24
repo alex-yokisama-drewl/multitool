@@ -6,9 +6,10 @@ Cross-platform offline desktop multitool — image / PDF / etc. conversions that
 
 ## Project docs
 
-- [ASSIGNMENT.md](ASSIGNMENT.md) — what the app does and how to know it's done (Phase 1 scope, acceptance criteria, roadmap)
-- [ARCHITECTURE.md](ARCHITECTURE.md) — tech stack and architecture patterns
-- [DECISIONS.md](DECISIONS.md) — running log of noteworthy choices and caveats
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — tech stack and architecture patterns
+- [docs/DECISIONS.md](docs/DECISIONS.md) — running log of noteworthy choices and caveats
+- [docs/ADDING_A_TOOL.md](docs/ADDING_A_TOOL.md) — playbook for adding a new tool to the registry
+- [docs/plans/BACKLOG.md](docs/plans/BACKLOG.md) — plans and ideas not yet committed to a milestone
 - [CLAUDE.md](CLAUDE.md) — working agreement for AI-assisted contributions; loaded into every Claude Code session
 - [CHANGELOG.md](CHANGELOG.md) — per-release notes (generated from conventional commits)
 
@@ -31,9 +32,9 @@ The full test/lint/coverage command reference is in [CLAUDE.md → Commands chea
 
 ## Project layout
 
-- `src/` — React frontend; `src/tools/` is the tool registry ([ARCHITECTURE §3.1](ARCHITECTURE.md#31-tool-registry-pattern))
+- `src/` — React frontend; `src/tools/` is the tool registry ([ARCHITECTURE §3.1](docs/ARCHITECTURE.md#31-tool-registry-pattern))
 - `src-tauri/` — Tauri shell (Rust) and cargo workspace root
-- `src-tauri/multitool-core/` — pure-logic rlib, testable without spinning up Tauri ([DECISIONS.md](DECISIONS.md) → "Workspace split")
+- `src-tauri/multitool-core/` — pure-logic rlib, testable without spinning up Tauri ([DECISIONS.md](docs/DECISIONS.md) → "Workspace split")
 
 ## License
 

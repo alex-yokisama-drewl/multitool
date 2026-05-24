@@ -3,9 +3,9 @@
 //! Takes a slice of `(path, encoded-bytes)` and assembles them into a single
 //! PDF with one image per page. The bytes-back-to-the-caller signature
 //! (`Result<(Vec<u8>, JobSummary), AppError>`) keeps file I/O in the
-//! orchestrator (`job.rs`), which simplifies the cancel-mid-job rule from
-//! `docs/tools/images-to-pdf.md`: if `convert` errors with `Cancelled` the
-//! orchestrator never writes anything, so no half-PDF is ever on disk.
+//! orchestrator (`job.rs`), which makes the cancel-mid-job rule trivial: if
+//! `convert` errors with `Cancelled` the orchestrator never writes anything,
+//! so no half-PDF is ever on disk.
 //!
 //! EXIF orientation is honored on input: `ImageReader::with_guessed_format` →
 //! `into_decoder` → `orientation()` → `apply_orientation()`. Without this,
