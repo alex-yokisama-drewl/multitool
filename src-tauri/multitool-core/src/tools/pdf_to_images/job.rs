@@ -22,7 +22,7 @@ use super::writer::PageWriter;
 use crate::error::{AppError, AppResult};
 
 /// Progress event payload — `page` is 1-based to match the UX copy
-/// ("page 12 / 87" from `docs/tools/pdf-to-images.md`).
+/// ("page 12 / 87").
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 pub struct Progress {
     pub page: u32,
@@ -42,8 +42,7 @@ pub struct JobResult {
 /// to `{stem}_pages/page_NNN.{ext}`, surfacing progress through `on_progress`.
 ///
 /// `cancel` is checked by [`convert`] between pages — a cancel triggered
-/// mid-job leaves already-written pages on disk (per
-/// `docs/tools/pdf-to-images.md` → "Cancellation mid-render").
+/// mid-job leaves already-written pages on disk.
 ///
 /// Errors propagate without partial-state cleanup:
 /// - input missing / unreadable → mapped via [`io_to_app_err`]

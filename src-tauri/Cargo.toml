@@ -20,7 +20,7 @@ edition = "2021"
 
 [lib]
 name = "multitool_lib"
-# Desktop-only (ASSIGNMENT §2). `cdylib`/`staticlib` are for mobile.
+# Desktop-only. `cdylib`/`staticlib` are for mobile.
 crate-type = ["rlib"]
 
 [build-dependencies]

@@ -1,11 +1,11 @@
 //! Writes streamed `PageOutput`s to disk in `{stem}_pages/page_NNN.{ext}` form.
 //!
 //! The writer is the bridge between [`super::convert`]'s `on_page` callback
-//! and the filesystem layout from `docs/tools/pdf-to-images.md`. It resolves
-//! the target directory through [`crate::fs::unique_path`] (never merging
-//! into an existing folder, per ARCHITECTURE §3.3), creates it, and writes
-//! each page as `page_NNN.{ext}` with zero-padding sized to fit the declared
-//! total (min width 3, widens past 999 pages).
+//! and the on-disk layout. It resolves the target directory through
+//! [`crate::fs::unique_path`] (never merging into an existing folder, per
+//! ARCHITECTURE §3.3), creates it, and writes each page as `page_NNN.{ext}`
+//! with zero-padding sized to fit the declared total (min width 3, widens
+//! past 999 pages).
 //!
 //! Failures from the filesystem are mapped to [`AppError`]: a
 //! `PermissionDenied` `io::Error` becomes [`AppError::PermissionDenied`];
@@ -24,9 +24,8 @@ use crate::fs::unique_path;
 ///
 /// Use one writer per job and call [`write_page`](Self::write_page) in source
 /// order. The writer holds no buffer — each call hits disk synchronously, so
-/// partial output stays on disk if the caller stops early (matching the
-/// "cancellation leaves already-written pages in place" rule in
-/// `docs/tools/pdf-to-images.md`).
+/// partial output stays on disk if the caller stops early (cancellation
+/// leaves already-written pages in place).
 ///
 /// Defer [`create`](Self::create) until the caller knows at least one page
 /// will be written: the constructor creates the output directory eagerly, so

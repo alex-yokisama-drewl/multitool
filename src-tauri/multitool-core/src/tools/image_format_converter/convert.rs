@@ -8,9 +8,6 @@
 //! EXIF orientation is honored on input via
 //! [`multitool_core::image::decode_oriented`], the shared helper that
 //! `images_to_pdf` also routes through.
-//!
-//! Per-tool spec: `docs/tools/image-format-converter.md`. Build plan:
-//! `docs/tools/image-format-converter-plan.md`. Both delete on ship.
 
 use std::io::Cursor;
 
