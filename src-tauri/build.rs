@@ -86,18 +86,46 @@ fn stage_pdfium_resource() {
 
     fs::create_dir_all(&staged_dir).expect("create resources/pdfium dir");
 
-    // Copy unconditionally rather than skip-when-exists — picks up upstream
-    // pin bumps and stays correct if the source file was replaced. The file
-    // is small (~5 MB) so the copy is cheap.
-    fs::copy(&source_path, &staged_path).unwrap_or_else(|err| {
-        panic!(
-            "copy pdfium binary {} -> {}: {err}",
-            source_path.display(),
-            staged_path.display()
-        )
-    });
+    // Idempotent copy — overwriting on every build touches the staged file's
+    // mtime, and the staged file lives under `src-tauri/`, which Tauri's
+    // dev-mode watcher monitors. An unconditional copy made `pnpm tauri dev`
+    // wedge in a rebuild loop. Skip when the dest is plausibly already
+    // current (same size, dest newer than src). Pin bumps either change the
+    // file size (most common) or produce a strictly newer source mtime, so
+    // both paths still trigger a re-copy.
+    if needs_copy(&source_path, &staged_path) {
+        fs::copy(&source_path, &staged_path).unwrap_or_else(|err| {
+            panic!(
+                "copy pdfium binary {} -> {}: {err}",
+                source_path.display(),
+                staged_path.display()
+            )
+        });
+    }
 
     println!("cargo:rerun-if-changed={}", source_path.display());
+}
+
+fn needs_copy(src: &Path, dest: &Path) -> bool {
+    let Ok(src_meta) = fs::metadata(src) else {
+        // No source — nothing we can usefully do here; let the caller
+        // proceed (the earlier extract assertion would have caught a
+        // missing source).
+        return false;
+    };
+    let Ok(dest_meta) = fs::metadata(dest) else {
+        return true;
+    };
+    if src_meta.len() != dest_meta.len() {
+        return true;
+    }
+    // Modified-time check: re-copy if the source is strictly newer than
+    // the staged file. mtime errors fall back to "copy anyway" — unusual
+    // filesystem but safer than silently going stale.
+    let (Ok(src_mt), Ok(dest_mt)) = (src_meta.modified(), dest_meta.modified()) else {
+        return true;
+    };
+    src_mt > dest_mt
 }
 
 fn download_and_extract_tgz(url: &str, out: &Path) {
