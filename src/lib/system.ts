@@ -79,6 +79,40 @@ export async function pickConvertibleImages(): Promise<string[] | null> {
   return Array.isArray(result) ? result : [result];
 }
 
+// Multi-select picker for the Audio Format Converter tool. Accepts every
+// audio format the Rust side decodes via Symphonia (default features + the
+// `mp3`/`aac`/`alac`/`isomp4`/`aiff`/`caf` feature flags enabled in
+// `multitool-core`). The filter is advisory — Symphonia re-validates on
+// decode, so a renamed file routes through skip+continue.
+export async function pickConvertibleAudio(): Promise<string[] | null> {
+  const result = await open({
+    multiple: true,
+    directory: false,
+    filters: [
+      {
+        name: "Audio",
+        extensions: [
+          "mp3",
+          "wav",
+          "flac",
+          "ogg",
+          "oga",
+          "m4a",
+          "mp4",
+          "aac",
+          "aiff",
+          "aif",
+          "caf",
+          "mkv",
+          "webm",
+        ],
+      },
+    ],
+  });
+  if (result === null) return null;
+  return Array.isArray(result) ? result : [result];
+}
+
 export async function revealInFolder(path: string): Promise<void> {
   await revealItemInDir(path);
 }

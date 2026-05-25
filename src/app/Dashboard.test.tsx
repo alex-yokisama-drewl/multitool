@@ -17,8 +17,19 @@ describe("Dashboard", () => {
     expect(
       screen.getByRole("link", { name: /images → pdf/i }),
     ).toBeInTheDocument();
+    // Two tools both named "Format Converter" — qualify by section to keep
+    // the assertion specific.
+    const imageSection = screen
+      .getByRole("heading", { name: /^image$/i })
+      .closest("section")!;
+    const audioSection = screen
+      .getByRole("heading", { name: /^audio$/i })
+      .closest("section")!;
     expect(
-      screen.getByRole("link", { name: /format converter/i }),
+      within(imageSection).getByRole("link", { name: /format converter/i }),
+    ).toBeInTheDocument();
+    expect(
+      within(audioSection).getByRole("link", { name: /format converter/i }),
     ).toBeInTheDocument();
   });
 
@@ -35,6 +46,9 @@ describe("Dashboard", () => {
     const imageSection = screen
       .getByRole("heading", { name: /^image$/i })
       .closest("section")!;
+    const audioSection = screen
+      .getByRole("heading", { name: /^audio$/i })
+      .closest("section")!;
 
     expect(
       within(pdfSection).getByRole("link", { name: /pdf → images/i }),
@@ -47,10 +61,19 @@ describe("Dashboard", () => {
         name: /format converter/i,
       }),
     ).toBeInTheDocument();
+    expect(
+      within(audioSection).getByRole("link", {
+        name: /format converter/i,
+      }),
+    ).toBeInTheDocument();
 
-    // PDF section comes before Image section per toolCategories order.
+    // PDF / Image / Audio sections render in toolCategories order.
     const headings = screen.getAllByRole("heading", { level: 2 });
-    expect(headings.map((h) => h.textContent)).toEqual(["PDF", "Image"]);
+    expect(headings.map((h) => h.textContent)).toEqual([
+      "PDF",
+      "Image",
+      "Audio",
+    ]);
   });
 
   it("applies the registered tile color token to each tile", () => {
@@ -62,16 +85,27 @@ describe("Dashboard", () => {
 
     const pdfToImages = screen.getByRole("link", { name: /pdf → images/i });
     const imagesToPdf = screen.getByRole("link", { name: /images → pdf/i });
-    const imageFormat = screen.getByRole("link", {
+    const imageSection = screen
+      .getByRole("heading", { name: /^image$/i })
+      .closest("section")!;
+    const audioSection = screen
+      .getByRole("heading", { name: /^audio$/i })
+      .closest("section")!;
+    const imageFormat = within(imageSection).getByRole("link", {
+      name: /format converter/i,
+    });
+    const audioFormat = within(audioSection).getByRole("link", {
       name: /format converter/i,
     });
 
     expect(pdfToImages.getAttribute("data-tile-color")).toBe("rose");
     expect(imagesToPdf.getAttribute("data-tile-color")).toBe("amber");
     expect(imageFormat.getAttribute("data-tile-color")).toBe("sky");
+    expect(audioFormat.getAttribute("data-tile-color")).toBe("emerald");
 
     // Inline style binds the CSS var so the palette in globals.css is the
     // single source of truth for the actual color value.
     expect(pdfToImages.style.backgroundColor).toBe("var(--tile-rose)");
+    expect(audioFormat.style.backgroundColor).toBe("var(--tile-emerald)");
   });
 });
