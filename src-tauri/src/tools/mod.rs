@@ -12,6 +12,7 @@
 //! `cargo clippy` before any UI loads.
 
 pub mod audio_format_converter;
+pub mod audio_trimmer;
 pub mod image_format_converter;
 pub mod images_to_pdf;
 pub mod pdf_to_images;
@@ -19,8 +20,9 @@ pub mod pdf_to_images;
 pub fn register_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
     builder.invoke_handler(tauri::generate_handler![
         crate::ipc::cancel_job,
-        crate::asset_scope::allow_image_preview,
+        crate::asset_scope::allow_media_preview,
         audio_format_converter::convert_audio_format,
+        audio_trimmer::trim_audio,
         image_format_converter::convert_image_format,
         images_to_pdf::convert_images_to_pdf,
         pdf_to_images::convert_pdf_to_images,

@@ -6,13 +6,13 @@ const {
   convertMock,
   pickConvertibleImagesMock,
   revealInFolderMock,
-  allowImagePreviewMock,
+  allowMediaPreviewMock,
   imageAssetUrlMock,
 } = vi.hoisted(() => ({
   convertMock: vi.fn(),
   pickConvertibleImagesMock: vi.fn(),
   revealInFolderMock: vi.fn(),
-  allowImagePreviewMock: vi.fn(),
+  allowMediaPreviewMock: vi.fn(),
   imageAssetUrlMock: vi.fn((path: string) => `asset://${path}`),
 }));
 
@@ -22,7 +22,7 @@ vi.mock("@/lib/tools/imageFormatConverter", () => ({
 vi.mock("@/lib/system", () => ({
   pickConvertibleImages: pickConvertibleImagesMock,
   revealInFolder: revealInFolderMock,
-  allowImagePreview: allowImagePreviewMock,
+  allowMediaPreview: allowMediaPreviewMock,
   imageAssetUrl: imageAssetUrlMock,
 }));
 
@@ -38,7 +38,7 @@ function renderTool() {
 
 async function pickInto(paths: string[]) {
   pickConvertibleImagesMock.mockResolvedValueOnce(paths);
-  allowImagePreviewMock.mockResolvedValueOnce(undefined);
+  allowMediaPreviewMock.mockResolvedValueOnce(undefined);
   fireEvent.click(screen.getByRole("button", { name: /^select images$/i }));
   await screen.findByRole("button", { name: /^convert$/i });
 }
@@ -48,7 +48,7 @@ describe("ImageFormatConverter", () => {
     convertMock.mockReset();
     pickConvertibleImagesMock.mockReset();
     revealInFolderMock.mockReset();
-    allowImagePreviewMock.mockReset();
+    allowMediaPreviewMock.mockReset();
   });
 
   it("renders the idle state with a Select images button", () => {
@@ -67,7 +67,7 @@ describe("ImageFormatConverter", () => {
     // Pick a single new file via "Select different images" — batch
     // becomes just that file. The previous two are discarded.
     pickConvertibleImagesMock.mockResolvedValueOnce(["/tmp/c.png"]);
-    allowImagePreviewMock.mockResolvedValueOnce(undefined);
+    allowMediaPreviewMock.mockResolvedValueOnce(undefined);
     fireEvent.click(
       screen.getByRole("button", { name: /select different images/i }),
     );
@@ -140,7 +140,7 @@ describe("ImageFormatConverter", () => {
       "/tmp/a.png",
       "/tmp/icon.svg",
     ]);
-    allowImagePreviewMock.mockResolvedValueOnce(undefined);
+    allowMediaPreviewMock.mockResolvedValueOnce(undefined);
     fireEvent.click(
       screen.getByRole("button", { name: /select different images/i }),
     );

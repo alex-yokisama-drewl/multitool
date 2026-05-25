@@ -19,6 +19,14 @@ export function imageAssetUrl(path: string): string {
   return rawConvertFileSrc(path);
 }
 
+// Same wrapper, audio-shaped name — the trimmer feeds the URL into
+// `fetch()` + `AudioContext.decodeAudioData`, not `<img>`. One impl;
+// two clearly-named call sites so the picker→preview pipeline reads
+// idiomatically on both tools.
+export function audioAssetUrl(path: string): string {
+  return rawConvertFileSrc(path);
+}
+
 export async function pickPdfFile(): Promise<string | null> {
   const result = await open({
     multiple: false,
@@ -113,16 +121,36 @@ export async function pickConvertibleAudio(): Promise<string[] | null> {
   return Array.isArray(result) ? result : [result];
 }
 
+// Single-select picker for the Audio Trimmer tool. Restricted to the
+// formats we can round-trip back to the source (the trimmer's contract
+// is "output preserves source format"; we have encoders only for
+// wav/mp3/flac/ogg/oga). The filter is advisory; the Rust side
+// re-validates via decode + extension match.
+export async function pickAudioFile(): Promise<string | null> {
+  const result = await open({
+    multiple: false,
+    directory: false,
+    filters: [
+      {
+        name: "Audio",
+        extensions: ["mp3", "wav", "flac", "ogg", "oga"],
+      },
+    ],
+  });
+  return typeof result === "string" ? result : null;
+}
+
 export async function revealInFolder(path: string): Promise<void> {
   await revealItemInDir(path);
 }
 
-// Grant the webview asset-protocol access to a set of picked image paths,
-// so `convertFileSrc(path)` can render thumbnails. Tauri's asset-protocol
-// scope starts empty by default (see DECISIONS.md → "Asset protocol scope:
-// dynamic per-pick"); this is the per-pick widening. The Rust side
-// re-validates `.png/.jpg/.jpeg/.webp` so a direct IPC call can't widen
-// the grant past image files.
-export async function allowImagePreview(paths: string[]): Promise<void> {
-  await invoke("allow_image_preview", { paths });
+// Grant the webview asset-protocol access to a set of picked media paths
+// (images or audio), so `convertFileSrc(path)` can render thumbnails or
+// stream into `<audio>` / `AudioContext.decodeAudioData`. Tauri's asset-
+// protocol scope starts empty by default (see DECISIONS.md → "Asset
+// protocol scope: dynamic per-pick"); this is the per-pick widening. The
+// Rust side re-validates the extension against `IMAGE_EXTS + AUDIO_EXTS`
+// so a direct IPC call can't widen the grant past supported media.
+export async function allowMediaPreview(paths: string[]): Promise<void> {
+  await invoke("allow_media_preview", { paths });
 }

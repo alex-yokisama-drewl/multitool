@@ -41,6 +41,12 @@ export function pickConvertibleAudio(): Promise<string[] | null> {
   return Promise.resolve(MOCK_AUDIO_PATHS);
 }
 
+// Audio Trimmer's single-select picker. The mock returns the first audio
+// path so the trimmer's `picked` state has something to load.
+export function pickAudioFile(): Promise<string | null> {
+  return Promise.resolve(MOCK_AUDIO_PATHS[0] ?? null);
+}
+
 export function imageAssetUrl(path: string): string {
   // No Tauri asset protocol in a plain browser — return a harmless URL
   // so `<img>` rendering doesn't blow up. The spec doesn't assert on
@@ -48,11 +54,17 @@ export function imageAssetUrl(path: string): string {
   return `mock-asset://${path}`;
 }
 
-export function allowImagePreview(_paths: string[]): Promise<void> {
+// Same shim for audio. Trimmer e2e doesn't drive Web Audio decode — the
+// spec mocks the trim invoke directly — so a stub URL is enough.
+export function audioAssetUrl(path: string): string {
+  return `mock-asset://${path}`;
+}
+
+export function allowMediaPreview(_paths: string[]): Promise<void> {
   void _paths;
   // No-op in browser — there's no Tauri asset-protocol scope to widen.
   // The browser will simply 404 on `convertFileSrc(path)`; that's fine,
-  // the spec doesn't assert on rendered image bytes (alt="" + no-source
+  // the spec doesn't assert on rendered media bytes (alt="" + no-source
   // fallback). Just keep the wrapper resolving so the picker flow
   // continues into staging.
   return Promise.resolve();
