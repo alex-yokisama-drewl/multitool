@@ -52,6 +52,14 @@ symphonia = { version = "0.6", features = ["mp3", "aac", "alac", "isomp4", "aiff
 hound = "3"
 # FLAC encoder. Pure Rust.
 flacenc = "0.5"
+# FLAC decoder. Symphonia 0.6's FLAC demuxer is strict about STREAMINFO's
+# `total_samples` matching the actual frame count, and flacenc's output
+# trips that check — Symphonia returns "unexpected end of file" on
+# flacenc-produced files that ffprobe/claxon read cleanly. claxon is the
+# de-facto Rust FLAC decoder (pure Rust, mature, used by flacenc itself
+# for its integrity tests). We route .flac inputs through claxon and keep
+# Symphonia for every other format.
+claxon = "0.4"
 # MP3 encoder via vendored LAME 3.100. mp3lame-sys uses GNU autotools on
 # Unix (autoconf/automake/libtool — pre-installed on ubuntu-latest, needs a
 # `brew install autoconf automake libtool` step on the macOS CI runner) and

@@ -15,6 +15,10 @@
 
 use std::io::Cursor;
 
+use flacenc::bitsink::ByteSink;
+use flacenc::component::BitRepr;
+use flacenc::error::Verify;
+use hound::{SampleFormat as HoundSampleFormat, WavSpec, WavWriter};
 use serde::{Deserialize, Serialize};
 use symphonia::core::codecs::audio::AudioDecoderOptions;
 use symphonia::core::errors::Error as SymphoniaError;
@@ -75,11 +79,16 @@ pub enum ChannelMode {
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Opts {
     pub target_format: TargetFormat,
-    /// MP3 CBR bitrate, kbps. Clamped in commits 3–4 when MP3 encoder lands.
+    /// MP3 CBR bitrate, kbps. Clamped when MP3 encoder lands (commit 4).
     pub mp3_bitrate_kbps: u32,
-    /// Vorbis quality, Xiph scale −1.0…10.0. Clamped in commits 3–4.
+    /// Vorbis quality, Xiph scale −1.0…10.0. Clamped when OGG encoder lands (commit 4).
     pub vorbis_quality: f32,
-    /// FLAC compression level 0…8. Clamped in commits 3–4.
+    /// FLAC compression level 0…8. **Currently a no-op** — the `flacenc`
+    /// 0.5 API doesn't expose a single compression knob; it has fine-grained
+    /// `subframe_coding` / `stereo_coding` config blocks instead. v1 ships
+    /// with the crate's defaults (good enough for typical use). Keeping the
+    /// field on Opts is forward-compatible — if we ever map levels to the
+    /// fine-grained knobs, we don't churn the wire shape.
     pub flac_compression_level: u32,
     pub wav_bit_depth: WavBitDepth,
     pub channels: ChannelMode,
@@ -104,25 +113,34 @@ pub struct EncodedFile {
 /// the source ships — we pass it through to the encoder unchanged (per the
 /// v1 "passthrough sample rate" decision in the working doc).
 ///
-/// Internal intermediate; not part of the tool's IPC surface. Encoders in
-/// commits 3–4 consume this directly.
+/// Internal intermediate; not part of the tool's IPC surface. Encoders
+/// consume this directly.
 #[derive(Clone, Debug)]
-// Fields are read only by tests in this commit; commit 3's WAV/FLAC
-// encoders are the first non-test consumers, at which point this allow
-// gets removed.
-#[allow(dead_code)]
 pub(super) struct AudioBuffer {
     pub samples: Vec<f32>,
     pub channels: u16,
     pub sample_rate: u32,
 }
 
-/// Decode an audio file's bytes into interleaved f32 PCM via Symphonia.
+/// FLAC magic bytes. RFC 9639 §3 calls it the "stream marker": ASCII
+/// `fLaC` at file offset 0.
+const FLAC_MAGIC: [u8; 4] = [b'f', b'L', b'a', b'C'];
+
+/// Decode an audio file's bytes into interleaved f32 PCM.
 ///
-/// `source_ext` is passed to Symphonia's [`Hint`] only as a tie-breaker —
-/// the actual format is detected from bytes when possible. Pass `""` (or
-/// the lowercased extension without leading dot) when the caller has no
-/// extension to offer; bytes-sniffing still wins.
+/// **FLAC inputs route through `claxon`**; everything else goes through
+/// Symphonia. The split exists because Symphonia 0.6's FLAC demuxer is
+/// strict about STREAMINFO's `total_samples` matching the demuxed frame
+/// count, and our own `flacenc`-produced output trips that check (see
+/// the rationale on the `claxon` dep in `Cargo.toml`). FLAC files from
+/// other encoders (ffmpeg, reference flac CLI) read cleanly through
+/// either decoder; routing both through `claxon` keeps the path
+/// consistent.
+///
+/// `source_ext` is the lowercased source extension without leading dot
+/// (or `""`). For non-FLAC, it's passed to Symphonia's [`Hint`] only as
+/// a tie-breaker — bytes-sniffing wins. For FLAC, the magic bytes are
+/// checked directly; the extension is advisory.
 ///
 /// Per-packet `DecodeError` / `IoError` from a malformed packet skip the
 /// packet and continue, mirroring Symphonia's own getting-started example
@@ -134,6 +152,12 @@ pub(super) fn decode_to_pcm(source_ext: &str, bytes: &[u8]) -> AppResult<AudioBu
         return Err(AppError::UnsupportedFormat {
             detail: "audio decode: empty input".into(),
         });
+    }
+
+    let looks_like_flac = bytes.len() >= 4 && bytes[..4] == FLAC_MAGIC;
+    let extension_is_flac = source_ext.eq_ignore_ascii_case("flac");
+    if looks_like_flac || extension_is_flac {
+        return decode_flac_with_claxon(bytes);
     }
 
     // Symphonia takes ownership of the source via a Box, so we wrap the
@@ -246,6 +270,49 @@ pub(super) fn decode_to_pcm(source_ext: &str, bytes: &[u8]) -> AppResult<AudioBu
     })
 }
 
+/// Decode a FLAC byte stream into interleaved f32 PCM via `claxon`.
+///
+/// claxon yields i32 samples in the bit-depth's natural integer range
+/// (e.g. for 16-bit, samples are in `[-32768, 32767]`). We normalize to
+/// f32 in `[-1.0, 1.0]` using the bit-depth so the encoder paths stay
+/// uniform regardless of which decoder produced the PCM.
+fn decode_flac_with_claxon(bytes: &[u8]) -> AppResult<AudioBuffer> {
+    let mut reader =
+        claxon::FlacReader::new(Cursor::new(bytes)).map_err(|err| AppError::UnsupportedFormat {
+            detail: format!("flac decode: {err}"),
+        })?;
+    let info = reader.streaminfo();
+    let channels = u16::try_from(info.channels).map_err(|_| AppError::UnsupportedFormat {
+        detail: format!("flac decode: channel count {} exceeds u16", info.channels),
+    })?;
+    if channels == 0 {
+        return Err(AppError::UnsupportedFormat {
+            detail: "flac decode: zero-channel source".into(),
+        });
+    }
+    let sample_rate = info.sample_rate;
+    let bits = info.bits_per_sample;
+    let max_sample_magnitude = 1i64 << (bits - 1);
+    let denom = max_sample_magnitude as f32;
+    let mut samples = Vec::<f32>::new();
+    for s in reader.samples() {
+        let sample = s.map_err(|err| AppError::ProcessingFailed {
+            detail: format!("flac decode (sample): {err}"),
+        })?;
+        samples.push(sample as f32 / denom);
+    }
+    if samples.is_empty() {
+        return Err(AppError::UnsupportedFormat {
+            detail: "flac decode: no samples produced".into(),
+        });
+    }
+    Ok(AudioBuffer {
+        samples,
+        channels,
+        sample_rate,
+    })
+}
+
 /// Map a `symphonia::core::errors::Error` to the right `AppError` variant.
 /// `Unsupported` / `DecodeError` land in `UnsupportedFormat`; `IoError` and
 /// the long-tail of variants (Seek/Limit/Reset) fall through to
@@ -263,6 +330,123 @@ fn symphonia_to_app_err(err: SymphoniaError) -> AppError {
     }
 }
 
+/// Encode an `AudioBuffer` as WAV at the requested bit depth via `hound`.
+///
+/// Sample-format conversion:
+/// - `Bit16`: f32 [−1.0, 1.0] → i16 [`i16::MIN`, `i16::MAX`]. Out-of-range
+///   floats are clamped before scaling (sources from lossy decoders can
+///   excursion past ±1.0 on transients).
+/// - `Bit24`: f32 → 24-bit signed PCM. hound takes i32 with
+///   `bits_per_sample = 24`; we scale to [`I24_MIN`, `I24_MAX`].
+/// - `Bit32f`: f32 written through directly, `sample_format = Float`.
+///
+/// Mono / stereo / N-channel are all written as-is — the WAV format
+/// carries any channel count. `decode_to_pcm` already gave us interleaved
+/// samples, and hound expects interleaved input for `write_sample` calls.
+fn encode_wav(buf: &AudioBuffer, bit_depth: WavBitDepth) -> AppResult<Vec<u8>> {
+    let (bits_per_sample, sample_format) = match bit_depth {
+        WavBitDepth::Bit16 => (16, HoundSampleFormat::Int),
+        WavBitDepth::Bit24 => (24, HoundSampleFormat::Int),
+        WavBitDepth::Bit32f => (32, HoundSampleFormat::Float),
+    };
+    let spec = WavSpec {
+        channels: buf.channels,
+        sample_rate: buf.sample_rate,
+        bits_per_sample,
+        sample_format,
+    };
+
+    // `Cursor<Vec<u8>>` provides `Write + Seek`, which is what `WavWriter`
+    // needs to back-patch the RIFF chunk sizes on `finalize`.
+    let mut cursor = Cursor::new(Vec::<u8>::new());
+    {
+        let mut writer = WavWriter::new(&mut cursor, spec).map_err(hound_to_app_err)?;
+        match bit_depth {
+            WavBitDepth::Bit16 => {
+                for &sample in &buf.samples {
+                    let s = (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i16;
+                    writer.write_sample(s).map_err(hound_to_app_err)?;
+                }
+            }
+            WavBitDepth::Bit24 => {
+                for &sample in &buf.samples {
+                    let s = (sample.clamp(-1.0, 1.0) * (I24_MAX as f32)) as i32;
+                    writer.write_sample(s).map_err(hound_to_app_err)?;
+                }
+            }
+            WavBitDepth::Bit32f => {
+                for &sample in &buf.samples {
+                    writer.write_sample(sample).map_err(hound_to_app_err)?;
+                }
+            }
+        }
+        writer.finalize().map_err(hound_to_app_err)?;
+    }
+    Ok(cursor.into_inner())
+}
+
+/// Signed 24-bit integer range. hound accepts i32 with bits_per_sample=24,
+/// but the actual valid range is [-2^23, 2^23 − 1]. Out-of-range values
+/// produce a hound `TooWide` error.
+const I24_MAX: i32 = (1 << 23) - 1;
+
+fn hound_to_app_err(err: hound::Error) -> AppError {
+    AppError::ProcessingFailed {
+        detail: format!("wav encode: {err}"),
+    }
+}
+
+/// Encode an `AudioBuffer` as FLAC via `flacenc`.
+///
+/// `_compression_level` is accepted for forward-compat but currently
+/// unused — see `Opts::flac_compression_level` for the rationale. v1
+/// ships with `flacenc::config::Encoder::default()`, which the upstream
+/// authors consider a sane preset (mid-range LPC orders + multithread
+/// when available).
+///
+/// Bit depth is fixed at 16 in v1. flacenc accepts arbitrary depths via
+/// `MemSource::from_samples`, but 16 covers the typical "lossless
+/// distribution" case. Bumping to 24-bit FLAC is a follow-up if real
+/// users care.
+fn encode_flac(buf: &AudioBuffer, _compression_level: u32) -> AppResult<Vec<u8>> {
+    const FLAC_BITS: usize = 16;
+
+    // Convert f32 [-1.0, 1.0] → i32 in the i16 numeric range. flacenc
+    // requires samples to be `bits_per_sample`-bounded; for 16 that
+    // means [-32768, 32767]. Out-of-range floats are clamped.
+    let pcm: Vec<i32> = buf
+        .samples
+        .iter()
+        .map(|&s| (s.clamp(-1.0, 1.0) * f32::from(i16::MAX)) as i32)
+        .collect();
+
+    let config = flacenc::config::Encoder::default()
+        .into_verified()
+        .map_err(|(_, err)| AppError::ProcessingFailed {
+            detail: format!("flac encode: invalid default config: {err:?}"),
+        })?;
+
+    let source = flacenc::source::MemSource::from_samples(
+        &pcm,
+        usize::from(buf.channels),
+        FLAC_BITS,
+        buf.sample_rate as usize,
+    );
+
+    let stream = flacenc::encode_with_fixed_block_size(&config, source, config.block_size)
+        .map_err(|err| AppError::ProcessingFailed {
+            detail: format!("flac encode: {err:?}"),
+        })?;
+
+    let mut sink = ByteSink::new();
+    stream
+        .write(&mut sink)
+        .map_err(|err| AppError::ProcessingFailed {
+            detail: format!("flac encode (write): {err:?}"),
+        })?;
+    Ok(sink.as_slice().to_vec())
+}
+
 /// Convert a single audio file's bytes from its source format to
 /// `opts.target_format`.
 ///
@@ -271,16 +455,26 @@ fn symphonia_to_app_err(err: SymphoniaError) -> AppError {
 /// — most containers have a magic byte sequence). Bytes always win when a
 /// format is identifiable from the stream.
 ///
-/// Stub for commits 2–4: decode is real but every encoder still returns
-/// `ProcessingFailed`. Commit 3 fills in WAV + FLAC; commit 4 fills in
-/// MP3 + OGG.
+/// WAV + FLAC are wired in this commit; MP3 + OGG follow in commit 4.
+/// Channel + sample-rate compatibility (downmix, encoder-rate validation)
+/// lands in commit 5.
 pub fn convert_one(source_ext: &str, input_bytes: &[u8], opts: &Opts) -> AppResult<EncodedFile> {
-    let _decoded = decode_to_pcm(source_ext, input_bytes)?;
-    Err(AppError::ProcessingFailed {
-        detail: format!(
-            "audio_format_converter::convert_one: encoder for {:?} not yet implemented",
-            opts.target_format
-        ),
+    let decoded = decode_to_pcm(source_ext, input_bytes)?;
+    let bytes = match opts.target_format {
+        TargetFormat::Wav => encode_wav(&decoded, opts.wav_bit_depth)?,
+        TargetFormat::Flac => encode_flac(&decoded, opts.flac_compression_level)?,
+        TargetFormat::Mp3 | TargetFormat::Ogg => {
+            return Err(AppError::ProcessingFailed {
+                detail: format!(
+                    "audio_format_converter::convert_one: encoder for {:?} not yet implemented",
+                    opts.target_format
+                ),
+            });
+        }
+    };
+    Ok(EncodedFile {
+        bytes,
+        warnings: Vec::new(),
     })
 }
 
@@ -365,29 +559,158 @@ mod tests {
         }
     }
 
-    /// Sanity: `convert_one` decodes successfully but still returns the
-    /// "encoder not yet implemented" error because no encoder is wired in
-    /// yet. Once commit 3 lands, this test gets replaced by per-target
-    /// round-trip tests.
-    #[test]
-    fn convert_one_decodes_but_no_encoder_wired_yet() {
-        let opts = Opts {
-            target_format: TargetFormat::Wav,
+    fn default_opts(target_format: TargetFormat) -> Opts {
+        Opts {
+            target_format,
             mp3_bitrate_kbps: 192,
             vorbis_quality: 5.0,
             flac_compression_level: 5,
             wav_bit_depth: WavBitDepth::Bit16,
             channels: ChannelMode::Source,
-        };
+        }
+    }
+
+    /// Decode the encoded output and assert dimensions match the source.
+    /// Lossy encoders (MP3/OGG) won't match sample-for-sample, but the
+    /// channel count + sample rate must round-trip exactly. WAV is
+    /// sample-exact (within float→int quantization).
+    fn assert_round_trip_dims(
+        encoded: &[u8],
+        source_ext: &str,
+        expected_channels: u16,
+        expected_rate: u32,
+    ) {
+        let decoded = decode_to_pcm(source_ext, encoded)
+            .unwrap_or_else(|err| panic!("re-decode {source_ext} failed: {err:?}"));
+        assert_eq!(
+            decoded.channels, expected_channels,
+            "round-trip channel count mismatch"
+        );
+        assert_eq!(
+            decoded.sample_rate, expected_rate,
+            "round-trip sample rate mismatch"
+        );
+        assert!(
+            !decoded.samples.is_empty(),
+            "round-trip should produce non-empty samples"
+        );
+    }
+
+    // --- WAV encoder ---
+
+    #[test]
+    fn wav_mono_16bit_round_trips() {
+        let opts = default_opts(TargetFormat::Wav);
+        let out = convert_one("wav", &audio_fixture("tiny_mono.wav"), &opts)
+            .expect("convert WAV → WAV 16-bit");
+        assert_round_trip_dims(&out.bytes, "wav", 1, 44100);
+    }
+
+    #[test]
+    fn wav_mono_24bit_round_trips() {
+        let mut opts = default_opts(TargetFormat::Wav);
+        opts.wav_bit_depth = WavBitDepth::Bit24;
+        let out = convert_one("wav", &audio_fixture("tiny_mono.wav"), &opts)
+            .expect("convert WAV → WAV 24-bit");
+        assert_round_trip_dims(&out.bytes, "wav", 1, 44100);
+    }
+
+    #[test]
+    fn wav_mono_32f_round_trips() {
+        let mut opts = default_opts(TargetFormat::Wav);
+        opts.wav_bit_depth = WavBitDepth::Bit32f;
+        let out = convert_one("wav", &audio_fixture("tiny_mono.wav"), &opts)
+            .expect("convert WAV → WAV 32-bit float");
+        assert_round_trip_dims(&out.bytes, "wav", 1, 44100);
+    }
+
+    #[test]
+    fn wav_stereo_16bit_round_trips_with_two_channels_preserved() {
+        let opts = default_opts(TargetFormat::Wav);
+        let out = convert_one("wav", &audio_fixture("tiny_stereo.wav"), &opts)
+            .expect("convert stereo WAV → WAV 16-bit");
+        assert_round_trip_dims(&out.bytes, "wav", 2, 44100);
+    }
+
+    #[test]
+    fn mp3_input_to_wav_output_round_trips() {
+        // Lossy → lossless: dims must match; samples won't bit-match the
+        // MP3 source (decoder introduces artifacts). Sanity-checks the
+        // common "give me a WAV from this MP3 for editing" use case.
+        let opts = default_opts(TargetFormat::Wav);
+        let out =
+            convert_one("mp3", &audio_fixture("tiny_mono.mp3"), &opts).expect("convert MP3 → WAV");
+        assert_round_trip_dims(&out.bytes, "wav", 1, 44100);
+    }
+
+    // --- FLAC encoder ---
+
+    #[test]
+    fn flac_mono_round_trips() {
+        let opts = default_opts(TargetFormat::Flac);
+        let out =
+            convert_one("wav", &audio_fixture("tiny_mono.wav"), &opts).expect("convert WAV → FLAC");
+        assert_round_trip_dims(&out.bytes, "flac", 1, 44100);
+    }
+
+    #[test]
+    fn flac_stereo_round_trips() {
+        let opts = default_opts(TargetFormat::Flac);
+        let out = convert_one("wav", &audio_fixture("tiny_stereo.wav"), &opts)
+            .expect("convert stereo WAV → FLAC");
+        assert_round_trip_dims(&out.bytes, "flac", 2, 44100);
+    }
+
+    #[test]
+    fn flac_compression_level_is_currently_a_no_op() {
+        // Verifies the documented "level is a no-op in v1" behaviour:
+        // levels 0 and 8 produce identical output for the same input
+        // because flacenc's Encoder default doesn't honour either value.
+        // If/when we wire a level→config-knobs mapping, this test gets
+        // replaced by a "lower level = larger output" assertion.
+        let mut opts_lo = default_opts(TargetFormat::Flac);
+        opts_lo.flac_compression_level = 0;
+        let mut opts_hi = default_opts(TargetFormat::Flac);
+        opts_hi.flac_compression_level = 8;
+        let lo =
+            convert_one("wav", &audio_fixture("tiny_mono.wav"), &opts_lo).expect("convert level 0");
+        let hi =
+            convert_one("wav", &audio_fixture("tiny_mono.wav"), &opts_hi).expect("convert level 8");
+        assert_eq!(
+            lo.bytes, hi.bytes,
+            "v1 ignores flac_compression_level — outputs should be identical"
+        );
+    }
+
+    // --- Stubs that should still fail until commit 4 lands MP3/OGG ---
+
+    #[test]
+    fn mp3_encoder_not_wired_yet() {
+        let opts = default_opts(TargetFormat::Mp3);
         let result = convert_one("wav", &audio_fixture("tiny_mono.wav"), &opts);
         match result {
             Err(AppError::ProcessingFailed { detail }) => {
                 assert!(
                     detail.contains("not yet implemented"),
-                    "expected the not-yet-implemented sentinel, got {detail}"
+                    "expected MP3-not-implemented sentinel, got {detail}"
                 );
             }
-            other => panic!("expected ProcessingFailed not-yet-implemented, got {other:?}"),
+            other => panic!("expected ProcessingFailed for MP3 stub, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ogg_encoder_not_wired_yet() {
+        let opts = default_opts(TargetFormat::Ogg);
+        let result = convert_one("wav", &audio_fixture("tiny_mono.wav"), &opts);
+        match result {
+            Err(AppError::ProcessingFailed { detail }) => {
+                assert!(
+                    detail.contains("not yet implemented"),
+                    "expected OGG-not-implemented sentinel, got {detail}"
+                );
+            }
+            other => panic!("expected ProcessingFailed for OGG stub, got {other:?}"),
         }
     }
 }
