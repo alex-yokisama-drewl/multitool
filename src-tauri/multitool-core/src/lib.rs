@@ -6,6 +6,7 @@
 
 #![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
 
+pub mod audio_codecs;
 pub mod error;
 pub mod fs;
 pub mod image;

@@ -196,8 +196,9 @@ fn io_to_app_err(path: &Path, err: &io::Error) -> AppError {
 
 #[cfg(test)]
 mod tests {
-    use super::super::convert::{ChannelMode, WavBitDepth};
+    use super::super::convert::ChannelMode;
     use super::*;
+    use crate::audio_codecs::encode::WavBitDepth;
     use std::cell::RefCell;
     use tempfile::TempDir;
 
