@@ -17,5 +17,5 @@
 mod convert;
 mod job;
 
-pub use convert::Opts;
+pub use convert::{trim_and_fade, Opts};
 pub use job::{run_job, JobResult, Progress};
