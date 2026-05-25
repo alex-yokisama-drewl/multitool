@@ -1,9 +1,10 @@
 import type { ComponentType } from "react";
+import { audioFormatConverterTool } from "./audio-format-converter";
 import { imageFormatConverterTool } from "./image-format-converter";
 import { imagesToPdfTool } from "./images-to-pdf";
 import { pdfToImagesTool } from "./pdf-to-images";
 
-export type ToolCategory = "pdf" | "image";
+export type ToolCategory = "pdf" | "image" | "audio";
 
 export interface ToolCategoryMeta {
   id: ToolCategory;
@@ -16,6 +17,7 @@ export interface ToolCategoryMeta {
 export const toolCategories: readonly ToolCategoryMeta[] = [
   { id: "pdf", label: "PDF" },
   { id: "image", label: "Image" },
+  { id: "audio", label: "Audio" },
 ];
 
 // Tile colors are CSS-variable tokens defined in src/app/globals.css as
@@ -44,4 +46,5 @@ export const tools: readonly Tool[] = [
   imageFormatConverterTool,
   imagesToPdfTool,
   pdfToImagesTool,
+  audioFormatConverterTool,
 ];

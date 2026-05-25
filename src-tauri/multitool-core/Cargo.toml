@@ -41,6 +41,26 @@ usvg = { version = "0.47", default-features = false, features = ["text"] }
 # every release.
 printpdf = { version = "0.7", default-features = false }
 
+# --- audio_format_converter stack ---
+# Symphonia is the pure-Rust decode side. Defaults already cover OGG/Vorbis,
+# WAV, FLAC, MKV/WebM, PCM, ADPCM, and tag readers. Explicit features extend
+# the input matrix to mp3 / aac / alac / isomp4 / aiff / caf — the picker
+# accepts all of these. No SIMD-opt features for now; revisit if profiling
+# shows the decode pass is hot.
+symphonia = { version = "0.6", features = ["mp3", "aac", "alac", "isomp4", "aiff", "caf"] }
+# WAV encoder. Pure Rust, mature, single-purpose.
+hound = "3"
+# FLAC encoder. Pure Rust.
+flacenc = "0.5"
+# MP3 encoder via vendored LAME 3.100. mp3lame-sys uses GNU autotools on
+# Unix (autoconf/automake/libtool — pre-installed on ubuntu-latest, needs a
+# `brew install autoconf automake libtool` step on the macOS CI runner) and
+# the cc crate on Windows. LAME and resulting binary are self-contained.
+mp3lame-encoder = "0.2"
+# Ogg Vorbis encoder via vendored libogg + libvorbis with the aoTuV/Lancer
+# patches. cc-rs only — no autotools requirement.
+vorbis_rs = "0.5"
+
 [build-dependencies]
 # Build script downloads + extracts the platform-matched pdfium binary from
 # bblanchon/pdfium-binaries. Keep this set small — these compile on every
