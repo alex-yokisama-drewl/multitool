@@ -29,6 +29,18 @@ export function pickConvertibleImages(): Promise<string[] | null> {
   return Promise.resolve(MOCK_IMAGE_PATHS);
 }
 
+// Audio Format Converter's picker. Mock returns three deliberately-named
+// audio paths so the staging UI has rows to render.
+const MOCK_AUDIO_PATHS = [
+  "/tmp/multitool-e2e/song.wav",
+  "/tmp/multitool-e2e/track.mp3",
+  "/tmp/multitool-e2e/album.flac",
+];
+
+export function pickConvertibleAudio(): Promise<string[] | null> {
+  return Promise.resolve(MOCK_AUDIO_PATHS);
+}
+
 export function imageAssetUrl(path: string): string {
   // No Tauri asset protocol in a plain browser — return a harmless URL
   // so `<img>` rendering doesn't blow up. The spec doesn't assert on
