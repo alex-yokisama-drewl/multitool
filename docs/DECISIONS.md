@@ -6,6 +6,34 @@ Choices, caveats, and recipes that affect future work — patterns we must keep 
 
 ---
 
+## Audio stack: Symphonia for decode, format-specific encoders, no resampler
+
+The Audio Format Converter (commits `8351b63…08eb569`) intentionally splits decoder and encoder concerns rather than picking a single all-in-one crate.
+
+- **Decode**: [`symphonia`](https://github.com/pdeljanov/Symphonia) for everything except FLAC. Pure Rust, broad container/codec coverage (mp3 / aac / alac / vorbis / wav / aiff / caf / isomp4 / mkv / webm), decode-only.
+- **FLAC decode**: [`claxon`](https://github.com/ruuda/claxon) routed via a `fLaC` magic-byte sniff in `decode_to_pcm`. Symphonia 0.6's FLAC demuxer is strict about STREAMINFO's `total_samples` matching the demuxed frame count, and our own `flacenc`-produced output trips that check ("unexpected end of file") even though `ffprobe` reads the bytes cleanly. claxon — the de-facto Rust FLAC decoder, also used by flacenc's own integrity tests — handles both flacenc and ffmpeg FLACs reliably.
+- **Encoders**: one crate per output. WAV via [`hound`](https://github.com/ruuda/hound) (pure Rust), FLAC via [`flacenc`](https://github.com/yotarok/flacenc-rs) (pure Rust), MP3 via [`mp3lame-encoder`](https://github.com/DoumanAsh/mp3lame-encoder) (vendored LAME 3.100), OGG Vorbis via [`vorbis_rs`](https://github.com/ComunidadAylas/vorbis-rs) (vendored libogg + libvorbis with aoTuV/Lancer patches).
+- **Sample rate**: **passthrough only** in v1. No resampler. MP3 inputs at rates outside LAME's accepted set (`8/11.025/12/16/22.05/24/32/44.1/48 kHz`) are rejected with a clear per-file message; the orchestrator turns them into `Progress::Skipped` events.
+- **Channels**: simple count, not a layout. `apply_channel_mode` does equal-weight averaging for downmix and L=R for mono→stereo upmix. Layout-aware mixing (5.1 center channel, surround weighting) needs a `Channels` enum threaded through symphonia/claxon/encoders — follow-up.
+
+`flac_compression_level` is wired through the IPC shape but is **currently a no-op** because `flacenc` 0.5 has no single compression knob — only fine-grained `subframe_coding` / `stereo_coding` blocks. Keeping the field forward-compatible so we don't churn the wire shape if/when a level → fine-knob mapping lands.
+
+Cancellation is between files only in v1. Mid-file cancel needs the encoders switched to streaming chunked I/O (LAME + Vorbis support it; hound + flacenc would need a per-frame loop).
+
+---
+
+## Audio: `mp3lame-sys` requires GNU autotools on Unix (macOS CI brew step)
+
+`mp3lame-sys` (transitive of `mp3lame-encoder`) builds LAME 3.100 with **GNU autotools on Unix** (`autoconf`, `automake`, `libtool`) and `cc` on Windows.
+
+- **ubuntu-latest** already ships autoconf/automake/libtool via `build-essential` — no extra step needed.
+- **macos-latest** does NOT ship them by default — added a `brew install autoconf automake libtool` step to both [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) and [`.github/workflows/release.yml`](../.github/workflows/release.yml) (right after the Linux deps block).
+- **windows-latest** uses cc — no extra step.
+
+Don't drop the brew step. `vorbis_rs` and its `aotuv_lancer_vorbis_sys` core build via cc-rs only (no autotools), so this is mp3lame-specific.
+
+---
+
 ## pdfium: bundle native binary as a Tauri resource
 
 PDF→Images needs `pdfium.{dll,so,dylib}` available at runtime; baking `env!("PDFIUM_LIB_PATH")` into the binary leaks the CI runner's path and breaks on end-user machines.
