@@ -17,7 +17,13 @@ A new tool is meant to be **two new folders + two import lines + tests**, with n
 `docs/plans/<TOOL_NAME>.md` — a single working doc per tool, built in two phases:
 
 1. **Assignment brief first.** Inputs, options, output naming, edge cases, acceptance. Use the template at the bottom. Confirm with the user before moving to the next phase.
-2. **Then expand into a plan.** Extend (or partly replace) the brief with a list of commit-sized tasks. Update progress in-place as commits land — handoffs between sessions read this doc to pick up where the last one stopped.
+2. **Then expand into a plan.** Extend (or partly replace) the brief with a list of commit-sized tasks.
+
+### Keep the plan live
+
+**Update the plan after every commit, in-place.** Flip the row from `pending` to `done`, paste the commit SHA, and add a one-line note on anything surprising — a workaround, a gotcha caught during testing, a follow-up the next commit needs to remember. A fresh Claude (or human) session has to be able to read this doc and pick up exactly where the last one stopped, without rummaging through `git log` or re-deriving the plan. Commits that touch any working doc are cheap; commits where the doc lags behind the code are expensive when the next session has to reconstruct state.
+
+This rule applies to every doc under `docs/plans/`.
 
 Architectural choices that emerge mid-build go to [DECISIONS.md](DECISIONS.md), not the plan. **Delete the working doc when the tool ships.**
 
