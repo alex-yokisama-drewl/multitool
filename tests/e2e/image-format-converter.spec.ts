@@ -8,9 +8,9 @@ import { expect, test } from "@playwright/test";
 // Failure paths are unit-covered in ImageFormatConverter.test.tsx.
 
 test("converts staged images and surfaces the done state", async ({ page }) => {
-  await page.goto("/");
-
-  await page.getByRole("link", { name: /format converter/i }).click();
+  // Two "Format Converter" tiles exist on the dashboard (image + audio);
+  // go directly to the image route rather than navigate-by-name.
+  await page.goto("/#/tools/image-format-converter");
 
   // Idle → staging via the picker mock.
   await page.getByRole("button", { name: /^select images$/i }).click();
