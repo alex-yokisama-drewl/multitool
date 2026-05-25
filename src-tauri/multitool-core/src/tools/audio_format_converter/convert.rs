@@ -14,11 +14,14 @@
 //! and will move to DECISIONS.md once the tool ships.
 
 use std::io::Cursor;
+use std::mem::MaybeUninit;
+use std::num::{NonZeroU32, NonZeroU8};
 
 use flacenc::bitsink::ByteSink;
 use flacenc::component::BitRepr;
 use flacenc::error::Verify;
 use hound::{SampleFormat as HoundSampleFormat, WavSpec, WavWriter};
+use mp3lame_encoder::{Bitrate, Builder as LameBuilder, FlushNoGap, InterleavedPcm, MonoPcm};
 use serde::{Deserialize, Serialize};
 use symphonia::core::codecs::audio::AudioDecoderOptions;
 use symphonia::core::errors::Error as SymphoniaError;
@@ -26,6 +29,7 @@ use symphonia::core::formats::probe::Hint;
 use symphonia::core::formats::{FormatOptions, TrackType};
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
+use vorbis_rs::{VorbisBitrateManagementStrategy, VorbisEncoderBuilder};
 
 use crate::error::{AppError, AppResult};
 
@@ -447,6 +451,214 @@ fn encode_flac(buf: &AudioBuffer, _compression_level: u32) -> AppResult<Vec<u8>>
     Ok(sink.as_slice().to_vec())
 }
 
+/// Inclusive bitrate bounds for MP3 (kbps). LAME accepts a discrete set
+/// (see [`closest_lame_bitrate`]); these are the bounds the UI exposes
+/// and we clamp incoming values to. Mirrors the policy on
+/// `pdf_to_images`/`image_format_converter`: silently snap to nearest
+/// rather than reject.
+pub(crate) const MP3_BITRATE_MIN: u32 = 96;
+pub(crate) const MP3_BITRATE_MAX: u32 = 320;
+
+/// The full ladder of LAME-supported CBR bitrates. Indexed for closest-match
+/// in [`closest_lame_bitrate`].
+const LAME_BITRATE_LADDER: &[(u32, Bitrate)] = &[
+    (96, Bitrate::Kbps96),
+    (112, Bitrate::Kbps112),
+    (128, Bitrate::Kbps128),
+    (160, Bitrate::Kbps160),
+    (192, Bitrate::Kbps192),
+    (224, Bitrate::Kbps224),
+    (256, Bitrate::Kbps256),
+    (320, Bitrate::Kbps320),
+];
+
+/// Clamp `kbps` to `[MP3_BITRATE_MIN, MP3_BITRATE_MAX]` and snap to the
+/// nearest LAME-supported rate.
+fn closest_lame_bitrate(kbps: u32) -> Bitrate {
+    let clamped = kbps.clamp(MP3_BITRATE_MIN, MP3_BITRATE_MAX);
+    LAME_BITRATE_LADDER
+        .iter()
+        .min_by_key(|(k, _)| (i64::from(*k) - i64::from(clamped)).abs())
+        .map(|(_, b)| *b)
+        .unwrap_or(Bitrate::Kbps192)
+}
+
+/// Encode an `AudioBuffer` as MP3 via LAME (`mp3lame-encoder`).
+///
+/// **Mono / stereo only in v1.** LAME's API tops out at 2 channels;
+/// inputs with more than 2 channels return `ProcessingFailed` from this
+/// function. Commit 5 replaces that hard error with a per-file downmix
+/// (plus a warning), and MP3 still encodes at 2 channels.
+///
+/// Bitrate is CBR. We snap `kbps` to the nearest LAME-supported rate via
+/// [`closest_lame_bitrate`], so the UI can offer 96/128/192/etc. without
+/// the encoder rejecting awkward values.
+///
+/// f32 samples are passed straight through via the IEEE-float overloads
+/// of `lame_encode_buffer_*`. LAME expects them in `[-1.0, 1.0]`; we
+/// don't clamp here because the decoder paths already produce normalized
+/// PCM. If a future decoder excursions out of range, LAME's internal
+/// limiter handles it.
+fn encode_mp3(buf: &AudioBuffer, bitrate_kbps: u32) -> AppResult<Vec<u8>> {
+    if buf.channels == 0 || buf.channels > 2 {
+        return Err(AppError::ProcessingFailed {
+            detail: format!(
+                "mp3 encode: LAME supports 1 or 2 channels; source has {} (commit 5 adds downmix)",
+                buf.channels
+            ),
+        });
+    }
+
+    let mut builder = LameBuilder::new().ok_or_else(|| AppError::ProcessingFailed {
+        detail: "mp3 encode: failed to allocate LAME builder".into(),
+    })?;
+    builder
+        .set_num_channels(buf.channels as u8)
+        .map_err(lame_to_app_err)?;
+    builder
+        .set_sample_rate(buf.sample_rate)
+        .map_err(lame_to_app_err)?;
+    builder
+        .set_brate(closest_lame_bitrate(bitrate_kbps))
+        .map_err(lame_to_app_err)?;
+    let mut encoder = builder.build().map_err(lame_to_app_err)?;
+
+    // Output buffer: LAME's `max_required_buffer_size` is sized for the
+    // FULL input passed in one go, so we allocate once for the whole
+    // input plus a flush tail. Encode is sub-millisecond for tiny inputs
+    // and the buffer is freed when this fn returns.
+    let frames_per_channel = buf.samples.len() / usize::from(buf.channels);
+    // LAME's documented max bytes-per-input-frames, plus a ~7200-byte
+    // tail for the final flush (the FlushNoGap path can emit one extra
+    // MP3 frame).
+    let mut out = Vec::<u8>::with_capacity(
+        mp3lame_encoder::max_required_buffer_size(frames_per_channel) + 7200,
+    );
+
+    let encoded = match buf.channels {
+        1 => encoder
+            .encode(MonoPcm(buf.samples.as_slice()), out.spare_capacity_mut())
+            .map_err(|err| AppError::ProcessingFailed {
+                detail: format!("mp3 encode: {err:?}"),
+            })?,
+        2 => encoder
+            .encode(
+                InterleavedPcm(buf.samples.as_slice()),
+                out.spare_capacity_mut(),
+            )
+            .map_err(|err| AppError::ProcessingFailed {
+                detail: format!("mp3 encode: {err:?}"),
+            })?,
+        _ => unreachable!("guarded above"),
+    };
+    // SAFETY: `encoded` is the number of bytes LAME wrote into
+    // `spare_capacity_mut()`; those bytes are now initialized.
+    unsafe { out.set_len(out.len() + encoded) };
+
+    let flushed = encoder
+        .flush::<FlushNoGap>(out.spare_capacity_mut())
+        .map_err(|err| AppError::ProcessingFailed {
+            detail: format!("mp3 flush: {err:?}"),
+        })?;
+    // SAFETY: same reasoning — `flushed` bytes written + we own the spare.
+    unsafe { out.set_len(out.len() + flushed) };
+
+    Ok(out)
+}
+
+fn lame_to_app_err<E: core::fmt::Debug>(err: E) -> AppError {
+    AppError::ProcessingFailed {
+        detail: format!("mp3 encode (LAME): {err:?}"),
+    }
+}
+
+/// Inclusive Vorbis quality bounds the UI exposes (Xiph CLI scale,
+/// -1.0…10.0). [`xiph_to_internal_quality`] maps to the
+/// `VorbisBitrateManagementStrategy::QualityVbr` internal range
+/// (`-0.2..=1.0`) that libvorbis actually consumes.
+pub(crate) const VORBIS_QUALITY_MIN: f32 = -1.0;
+pub(crate) const VORBIS_QUALITY_MAX: f32 = 10.0;
+
+/// Map the user-facing Xiph CLI quality (`-1..10`, where 5 is the default
+/// in `oggenc`) to libvorbis's internal perceptual quality factor
+/// (`-0.2..1.0`).
+///
+/// We use a simple linear remap. The CLI's underlying mapping is
+/// non-linear, but for an interactive tool a perceptual "5 ≈ 0.5"
+/// linear approximation is close enough — the real subjective difference
+/// between adjacent steps is in the bitrate-bracketing logic, not in the
+/// quality scalar itself.
+fn xiph_to_internal_quality(cli_quality: f32) -> f32 {
+    let clamped = cli_quality.clamp(VORBIS_QUALITY_MIN, VORBIS_QUALITY_MAX);
+    // -1.0 → -0.2,  10.0 → 1.0,  5.0 → ≈0.5455
+    let normalized = (clamped - VORBIS_QUALITY_MIN) / (VORBIS_QUALITY_MAX - VORBIS_QUALITY_MIN);
+    -0.2 + normalized * 1.2
+}
+
+/// Encode an `AudioBuffer` as Ogg Vorbis via `vorbis_rs`.
+///
+/// libvorbis natively supports 1..255 channels but the v1 contract here
+/// is "what symphonia + claxon decoded"; in practice that's 1 or 2
+/// channels. We reject 0-channel inputs and pass anything else straight
+/// through to libvorbis, which handles up to 8 reliably and rejects more
+/// at the C layer.
+///
+/// `quality_xiph` is the user-facing Xiph CLI quality (-1..10). We map
+/// it to libvorbis's internal `target_quality` in [`xiph_to_internal_quality`].
+///
+/// libvorbis expects planar (per-channel) input. `decode_to_pcm` gives
+/// us interleaved samples, so we de-interleave into a `Vec<Vec<f32>>`
+/// first. Memory cost is fine for v1's "tiny audio file" use cases;
+/// streaming-chunked encoding is a commit-5 follow-up if memory becomes
+/// an issue on hour-long inputs.
+fn encode_ogg_vorbis(buf: &AudioBuffer, quality_xiph: f32) -> AppResult<Vec<u8>> {
+    let channels =
+        NonZeroU8::new(buf.channels as u8).ok_or_else(|| AppError::ProcessingFailed {
+            detail: "ogg encode: zero-channel source".into(),
+        })?;
+    let sample_rate =
+        NonZeroU32::new(buf.sample_rate).ok_or_else(|| AppError::ProcessingFailed {
+            detail: "ogg encode: zero sample rate".into(),
+        })?;
+
+    // De-interleave the samples into per-channel planes for libvorbis.
+    let n_channels = usize::from(buf.channels);
+    let frames = buf.samples.len() / n_channels;
+    let mut planar: Vec<Vec<f32>> = (0..n_channels)
+        .map(|_| Vec::with_capacity(frames))
+        .collect();
+    for chunk in buf.samples.chunks_exact(n_channels) {
+        for (plane, &sample) in planar.iter_mut().zip(chunk.iter()) {
+            plane.push(sample);
+        }
+    }
+
+    let mut sink = Vec::<u8>::new();
+    let mut builder =
+        VorbisEncoderBuilder::new(sample_rate, channels, &mut sink).map_err(vorbis_to_app_err)?;
+    builder.bitrate_management_strategy(VorbisBitrateManagementStrategy::QualityVbr {
+        target_quality: xiph_to_internal_quality(quality_xiph),
+    });
+    let mut encoder = builder.build().map_err(vorbis_to_app_err)?;
+    encoder
+        .encode_audio_block(&planar)
+        .map_err(vorbis_to_app_err)?;
+    encoder.finish().map_err(vorbis_to_app_err)?;
+    Ok(sink)
+}
+
+fn vorbis_to_app_err(err: vorbis_rs::VorbisError) -> AppError {
+    AppError::ProcessingFailed {
+        detail: format!("ogg encode: {err}"),
+    }
+}
+
+// MaybeUninit is used by mp3lame-encoder's spare_capacity_mut API.
+// Re-export here so the imports section reads as documentation of what
+// the encoders need.
+#[allow(dead_code)]
+type _MaybeUninitMarker = MaybeUninit<u8>;
+
 /// Convert a single audio file's bytes from its source format to
 /// `opts.target_format`.
 ///
@@ -455,22 +667,17 @@ fn encode_flac(buf: &AudioBuffer, _compression_level: u32) -> AppResult<Vec<u8>>
 /// — most containers have a magic byte sequence). Bytes always win when a
 /// format is identifiable from the stream.
 ///
-/// WAV + FLAC are wired in this commit; MP3 + OGG follow in commit 4.
-/// Channel + sample-rate compatibility (downmix, encoder-rate validation)
-/// lands in commit 5.
+/// All four encoders are wired. Channel + sample-rate compatibility
+/// (downmix > 2 channels, encoder-rate validation) lands in commit 5;
+/// today, an input with > 2 channels routed to MP3 returns
+/// `ProcessingFailed` from `encode_mp3` itself.
 pub fn convert_one(source_ext: &str, input_bytes: &[u8], opts: &Opts) -> AppResult<EncodedFile> {
     let decoded = decode_to_pcm(source_ext, input_bytes)?;
     let bytes = match opts.target_format {
         TargetFormat::Wav => encode_wav(&decoded, opts.wav_bit_depth)?,
         TargetFormat::Flac => encode_flac(&decoded, opts.flac_compression_level)?,
-        TargetFormat::Mp3 | TargetFormat::Ogg => {
-            return Err(AppError::ProcessingFailed {
-                detail: format!(
-                    "audio_format_converter::convert_one: encoder for {:?} not yet implemented",
-                    opts.target_format
-                ),
-            });
-        }
+        TargetFormat::Mp3 => encode_mp3(&decoded, opts.mp3_bitrate_kbps)?,
+        TargetFormat::Ogg => encode_ogg_vorbis(&decoded, opts.vorbis_quality)?,
     };
     Ok(EncodedFile {
         bytes,
@@ -682,35 +889,102 @@ mod tests {
         );
     }
 
-    // --- Stubs that should still fail until commit 4 lands MP3/OGG ---
+    // --- MP3 encoder ---
 
     #[test]
-    fn mp3_encoder_not_wired_yet() {
+    fn mp3_mono_round_trips() {
         let opts = default_opts(TargetFormat::Mp3);
-        let result = convert_one("wav", &audio_fixture("tiny_mono.wav"), &opts);
-        match result {
-            Err(AppError::ProcessingFailed { detail }) => {
-                assert!(
-                    detail.contains("not yet implemented"),
-                    "expected MP3-not-implemented sentinel, got {detail}"
-                );
-            }
-            other => panic!("expected ProcessingFailed for MP3 stub, got {other:?}"),
-        }
+        let out = convert_one("wav", &audio_fixture("tiny_mono.wav"), &opts)
+            .expect("convert mono WAV → MP3");
+        assert_round_trip_dims(&out.bytes, "mp3", 1, 44100);
     }
 
     #[test]
-    fn ogg_encoder_not_wired_yet() {
+    fn mp3_stereo_round_trips() {
+        let opts = default_opts(TargetFormat::Mp3);
+        let out = convert_one("wav", &audio_fixture("tiny_stereo.wav"), &opts)
+            .expect("convert stereo WAV → MP3");
+        // LAME's stereo MP3 decodes back as 2 channels through Symphonia.
+        assert_round_trip_dims(&out.bytes, "mp3", 2, 44100);
+    }
+
+    #[test]
+    fn mp3_bitrate_higher_produces_larger_output_than_lower() {
+        // Sanity-check the bitrate knob actually affects encoded size.
+        let mut opts_lo = default_opts(TargetFormat::Mp3);
+        opts_lo.mp3_bitrate_kbps = 96;
+        let mut opts_hi = default_opts(TargetFormat::Mp3);
+        opts_hi.mp3_bitrate_kbps = 320;
+        let lo = convert_one("wav", &audio_fixture("tiny_mono.wav"), &opts_lo)
+            .expect("encode at 96 kbps");
+        let hi = convert_one("wav", &audio_fixture("tiny_mono.wav"), &opts_hi)
+            .expect("encode at 320 kbps");
+        assert!(
+            hi.bytes.len() > lo.bytes.len(),
+            "expected 320 kbps MP3 ({}) > 96 kbps MP3 ({})",
+            hi.bytes.len(),
+            lo.bytes.len()
+        );
+    }
+
+    #[test]
+    fn mp3_bitrate_below_min_is_clamped_silently() {
+        let mut opts = default_opts(TargetFormat::Mp3);
+        opts.mp3_bitrate_kbps = 0; // far below 96 kbps min
+        let out = convert_one("wav", &audio_fixture("tiny_mono.wav"), &opts)
+            .expect("encode at bitrate=0 (clamped to 96)");
+        assert_round_trip_dims(&out.bytes, "mp3", 1, 44100);
+    }
+
+    // --- OGG Vorbis encoder ---
+
+    #[test]
+    fn ogg_mono_round_trips() {
         let opts = default_opts(TargetFormat::Ogg);
-        let result = convert_one("wav", &audio_fixture("tiny_mono.wav"), &opts);
-        match result {
-            Err(AppError::ProcessingFailed { detail }) => {
-                assert!(
-                    detail.contains("not yet implemented"),
-                    "expected OGG-not-implemented sentinel, got {detail}"
-                );
-            }
-            other => panic!("expected ProcessingFailed for OGG stub, got {other:?}"),
-        }
+        let out = convert_one("wav", &audio_fixture("tiny_mono.wav"), &opts)
+            .expect("convert mono WAV → OGG Vorbis");
+        assert_round_trip_dims(&out.bytes, "ogg", 1, 44100);
+    }
+
+    #[test]
+    fn ogg_stereo_round_trips() {
+        let opts = default_opts(TargetFormat::Ogg);
+        let out = convert_one("wav", &audio_fixture("tiny_stereo.wav"), &opts)
+            .expect("convert stereo WAV → OGG Vorbis");
+        assert_round_trip_dims(&out.bytes, "ogg", 2, 44100);
+    }
+
+    #[test]
+    fn ogg_quality_higher_produces_larger_output_than_lower() {
+        let mut opts_lo = default_opts(TargetFormat::Ogg);
+        opts_lo.vorbis_quality = -1.0;
+        let mut opts_hi = default_opts(TargetFormat::Ogg);
+        opts_hi.vorbis_quality = 10.0;
+        let lo = convert_one("wav", &audio_fixture("tiny_mono.wav"), &opts_lo)
+            .expect("encode at quality -1");
+        let hi = convert_one("wav", &audio_fixture("tiny_mono.wav"), &opts_hi)
+            .expect("encode at quality 10");
+        assert!(
+            hi.bytes.len() > lo.bytes.len(),
+            "expected q=10 ({}) > q=-1 ({})",
+            hi.bytes.len(),
+            lo.bytes.len()
+        );
+    }
+
+    #[test]
+    fn xiph_to_internal_quality_endpoints() {
+        // -1 (CLI min) → -0.2 (libvorbis min);
+        // 10 (CLI max) → 1.0 (libvorbis max);
+        // 5 → -0.2 + (6/11) * 1.2 ≈ 0.4545 (mid-range under linear remap).
+        assert!((xiph_to_internal_quality(-1.0) - -0.2).abs() < 1e-6);
+        assert!((xiph_to_internal_quality(10.0) - 1.0).abs() < 1e-6);
+        assert!((xiph_to_internal_quality(5.0) - 0.4545455).abs() < 1e-4);
+    }
+
+    #[test]
+    fn xiph_to_internal_quality_clamps_out_of_range() {
+        assert!((xiph_to_internal_quality(-100.0) - -0.2).abs() < 1e-6);
+        assert!((xiph_to_internal_quality(100.0) - 1.0).abs() < 1e-6);
     }
 }
