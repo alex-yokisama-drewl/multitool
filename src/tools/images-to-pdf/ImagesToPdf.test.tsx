@@ -5,13 +5,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const {
   convertMock,
   pickImageFilesMock,
-  allowImagePreviewMock,
+  allowMediaPreviewMock,
   revealInFolderMock,
   imageAssetUrlMock,
 } = vi.hoisted(() => ({
   convertMock: vi.fn(),
   pickImageFilesMock: vi.fn(),
-  allowImagePreviewMock: vi.fn(),
+  allowMediaPreviewMock: vi.fn(),
   revealInFolderMock: vi.fn(),
   imageAssetUrlMock: vi.fn((path: string) => `asset://${path}`),
 }));
@@ -21,7 +21,7 @@ vi.mock("@/lib/tools/imagesToPdf", () => ({
 }));
 vi.mock("@/lib/system", () => ({
   pickImageFiles: pickImageFilesMock,
-  allowImagePreview: allowImagePreviewMock,
+  allowMediaPreview: allowMediaPreviewMock,
   revealInFolder: revealInFolderMock,
   imageAssetUrl: imageAssetUrlMock,
 }));
@@ -37,11 +37,11 @@ function renderTool() {
 }
 
 /** Drive the picker → staging transition with a given path list. The
- * mocks deliver `paths` from pickImageFiles and resolve allowImagePreview;
+ * mocks deliver `paths` from pickImageFiles and resolve allowMediaPreview;
  * await the "Create PDF" button to know we're settled in `staging`. */
 async function pickInto(paths: string[]) {
   pickImageFilesMock.mockResolvedValueOnce(paths);
-  allowImagePreviewMock.mockResolvedValueOnce(undefined);
+  allowMediaPreviewMock.mockResolvedValueOnce(undefined);
   fireEvent.click(screen.getByRole("button", { name: /add images/i }));
   await screen.findByRole("button", { name: /create pdf/i });
 }
@@ -50,7 +50,7 @@ describe("ImagesToPdf", () => {
   beforeEach(() => {
     convertMock.mockReset();
     pickImageFilesMock.mockReset();
-    allowImagePreviewMock.mockReset();
+    allowMediaPreviewMock.mockReset();
     revealInFolderMock.mockReset();
   });
 
@@ -69,7 +69,7 @@ describe("ImagesToPdf", () => {
 
     expect(screen.getByRole("list", { name: /staged images/i })).toBeVisible();
     expect(screen.getByText(/staged \(2\)/i)).toBeInTheDocument();
-    expect(allowImagePreviewMock).toHaveBeenCalledWith([
+    expect(allowMediaPreviewMock).toHaveBeenCalledWith([
       "/tmp/a.png",
       "/tmp/b.jpg",
     ]);
@@ -86,7 +86,7 @@ describe("ImagesToPdf", () => {
     expect(
       screen.queryByRole("button", { name: /create pdf/i }),
     ).not.toBeInTheDocument();
-    expect(allowImagePreviewMock).not.toHaveBeenCalled();
+    expect(allowMediaPreviewMock).not.toHaveBeenCalled();
   });
 
   it("sorts staged items by filename ascending, and the output preview tracks the first", async () => {

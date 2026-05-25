@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
-  allowImagePreview,
+  allowMediaPreview,
   imageAssetUrl,
   pickConvertibleImages,
   revealInFolder,
@@ -93,7 +93,7 @@ export function ImageFormatConverter() {
     // the staging grid can resolve the URL. See DECISIONS → "Asset
     // protocol scope: dynamic per-pick". The Rust side re-validates
     // the extension set, so a renamed file fails closed.
-    await allowImagePreview(picked);
+    await allowMediaPreview(picked);
     setState({ kind: "staging", paths: picked });
   };
 

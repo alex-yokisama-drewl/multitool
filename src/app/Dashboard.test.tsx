@@ -31,6 +31,10 @@ describe("Dashboard", () => {
     expect(
       within(audioSection).getByRole("link", { name: /format converter/i }),
     ).toBeInTheDocument();
+    // Audio section now also carries the Trimmer.
+    expect(
+      within(audioSection).getByRole("link", { name: /trimmer/i }),
+    ).toBeInTheDocument();
   });
 
   it("groups tiles into category sections in registry order", () => {
@@ -66,6 +70,11 @@ describe("Dashboard", () => {
         name: /format converter/i,
       }),
     ).toBeInTheDocument();
+    expect(
+      within(audioSection).getByRole("link", { name: /trimmer/i }),
+    ).toBeInTheDocument();
+    // Two tiles under Audio now (Format Converter + Trimmer).
+    expect(within(audioSection).getAllByRole("link")).toHaveLength(2);
 
     // PDF / Image / Audio sections render in toolCategories order.
     const headings = screen.getAllByRole("heading", { level: 2 });
@@ -97,15 +106,20 @@ describe("Dashboard", () => {
     const audioFormat = within(audioSection).getByRole("link", {
       name: /format converter/i,
     });
+    const audioTrimmer = within(audioSection).getByRole("link", {
+      name: /trimmer/i,
+    });
 
     expect(pdfToImages.getAttribute("data-tile-color")).toBe("rose");
     expect(imagesToPdf.getAttribute("data-tile-color")).toBe("amber");
     expect(imageFormat.getAttribute("data-tile-color")).toBe("sky");
     expect(audioFormat.getAttribute("data-tile-color")).toBe("emerald");
+    expect(audioTrimmer.getAttribute("data-tile-color")).toBe("violet");
 
     // Inline style binds the CSS var so the palette in globals.css is the
     // single source of truth for the actual color value.
     expect(pdfToImages.style.backgroundColor).toBe("var(--tile-rose)");
     expect(audioFormat.style.backgroundColor).toBe("var(--tile-emerald)");
+    expect(audioTrimmer.style.backgroundColor).toBe("var(--tile-violet)");
   });
 });

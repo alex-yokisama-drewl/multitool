@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 // Happy-path smoke for the Images → PDF tool. The wrappers at `src/lib/`
 // get swapped for `tests/e2e/mocks/` (see vite.config.ts → e2eAliases):
 // pickImageFiles returns three deliberately non-alphabetical paths
-// (charlie / alpha / bravo), allowImagePreview no-ops, and the convert
+// (charlie / alpha / bravo), allowMediaPreview no-ops, and the convert
 // mock streams one progress event per image at 30ms each then resolves.
 // Failure paths are unit-covered in `ImagesToPdf.test.tsx`.
 

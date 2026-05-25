@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
-  allowImagePreview,
+  allowMediaPreview,
   imageAssetUrl,
   pickImageFiles,
   revealInFolder,
@@ -162,7 +162,7 @@ export function ImagesToPdf() {
     // Grant per-path asset-protocol scope so `convertFileSrc(path)` in
     // ThumbCard can resolve the URL. See DECISIONS → "Asset protocol
     // scope: dynamic per-pick".
-    await allowImagePreview(picked);
+    await allowMediaPreview(picked);
     setState((prev) => {
       const merged =
         prev.kind === "staging"
