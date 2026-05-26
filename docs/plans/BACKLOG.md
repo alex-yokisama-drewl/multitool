@@ -22,7 +22,6 @@ Plans and ideas not yet committed to a milestone. When an item moves into active
 
 ### Audio
 
-- **Audio trim.** Cut a clip with start/end timestamps.
 - **Audio compress.**
 - **Audio concat.**
 
