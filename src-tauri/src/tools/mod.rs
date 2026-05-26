@@ -11,6 +11,7 @@
 //! `#[tauri::command]` signature that drifted will fail `cargo build` /
 //! `cargo clippy` before any UI loads.
 
+pub mod audio_extractor;
 pub mod audio_format_converter;
 pub mod audio_trimmer;
 pub mod image_format_converter;
@@ -22,6 +23,7 @@ pub fn register_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri
     builder.invoke_handler(tauri::generate_handler![
         crate::ipc::cancel_job,
         crate::asset_scope::allow_media_preview,
+        audio_extractor::extract_audio,
         audio_format_converter::convert_audio_format,
         audio_trimmer::trim_audio,
         image_format_converter::convert_image_format,
