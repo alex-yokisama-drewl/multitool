@@ -47,6 +47,17 @@ export function pickAudioFile(): Promise<string | null> {
   return Promise.resolve(MOCK_AUDIO_PATHS[0] ?? null);
 }
 
+// Video Format Converter's picker. Two paths so the staging UI has
+// rows to render but the conversion stays brisk in the spec timeline.
+const MOCK_VIDEO_PATHS = [
+  "/tmp/multitool-e2e/holiday.mov",
+  "/tmp/multitool-e2e/screencast.mkv",
+];
+
+export function pickVideoFiles(): Promise<string[] | null> {
+  return Promise.resolve(MOCK_VIDEO_PATHS);
+}
+
 export function imageAssetUrl(path: string): string {
   // No Tauri asset protocol in a plain browser — return a harmless URL
   // so `<img>` rendering doesn't blow up. The spec doesn't assert on
