@@ -11,5 +11,7 @@
 //! coordinates are in the upright pixel space the user sees.
 
 mod convert;
+mod job;
 
 pub use convert::{crop_one, CropRect, PixelRect};
+pub use job::{run_job, JobResult, Progress};
