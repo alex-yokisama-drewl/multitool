@@ -140,6 +140,26 @@ export async function pickAudioFile(): Promise<string | null> {
   return typeof result === "string" ? result : null;
 }
 
+// Multi-select picker for the Video Format Converter tool. The filter
+// is advisory — ffmpeg sniffs the actual container at decode time, so a
+// renamed file still routes through the orchestrator's skip+continue.
+// Extensions match the brief's input set; the output set (mp4/webm/mkv)
+// is a strict subset.
+export async function pickVideoFiles(): Promise<string[] | null> {
+  const result = await open({
+    multiple: true,
+    directory: false,
+    filters: [
+      {
+        name: "Video",
+        extensions: ["mp4", "mov", "mkv", "webm", "avi"],
+      },
+    ],
+  });
+  if (result === null) return null;
+  return Array.isArray(result) ? result : [result];
+}
+
 export async function revealInFolder(path: string): Promise<void> {
   await revealItemInDir(path);
 }
