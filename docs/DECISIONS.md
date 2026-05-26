@@ -6,6 +6,18 @@ Choices, caveats, and recipes that affect future work — patterns we must keep 
 
 ---
 
+## Image Crop: backend-served format set, source-format preservation, reusable clamp
+
+The Image Crop tool (commits `83c83f1…`) is the second image tool and the trigger for making the encodable-raster-format set a single, backend-owned source of truth:
+
+- **`RasterFormat` is the one source of truth, served over IPC.** The image-format converter's old `TargetFormat` enum became [`multitool_core::image::RasterFormat`](../src-tauri/multitool-core/src/image/raster_format.rs) (PNG/JPEG/WebP/BMP/TIFF — the formats we can both decode *and* encode). `TargetFormat` is now a type alias, so the converter is unchanged. The `supported_raster_formats` Tauri command (in [`src-tauri/src/system.rs`](../src-tauri/src/system.rs)) serializes the variants' metadata; the frontend reads it via the memoized [`getRasterFormats()`](../src/lib/imageFormats.ts) and stops hard-coding format lists (the converter's output dropdown + alpha gate, the crop picker filter). **Adding a new encodable format = add the variant + match arms in `raster_format.rs`; the picker filter and dropdown follow automatically.** Don't re-introduce a literal extension array on the TS side.
+- **Crop preserves the source format by the file *extension*, not the sniffed bytes.** `crop_one` decodes EXIF-oriented bytes (bytes win, so a renamed file still decodes correctly) but re-encodes to `RasterFormat::from_extension(source_ext)`. So PNG bytes named `.jpg` come out as JPEG — "keep the extension, re-encode to match it". Output is `{stem}_cropped.{ext}` next to the source via `unique_path`. JPEG re-encodes at a fixed quality 90 (no knob — geometry tool; chain through the converter for quality control).
+- **Multi-frame TIFF is rejected before decode via a hand-rolled IFD walker.** Neither `image` nor the `tiff` crate exposes a top-level frame count, and `DynamicImage::from_decoder` silently returns only the first frame — which would drop pages on a crop. `tiff_frame_count` walks the classic-TIFF IFD linked list (`II`/`MM` + magic 42, then count/entries/next-offset per IFD); BigTIFF or any malformed/truncated chain returns `None` and falls through to the normal decoder. >1 IFD → `UnsupportedFormat`.
+- **The clamp is a reusable primitive, not buried in the tool.** [`CropRect::clamp_to(w,h) -> Option<PixelRect>`](../src-tauri/multitool-core/src/tools/image_crop/convert.rs) is the source of truth for "what rect actually gets cropped": zero-size dims forced to 1px, partial overflow clamped to the image intersection, no intersection → `None` (caller errors). `CropRect.x/y` are **signed** so a frame dragged off-canvas survives the wire. The frontend clamps too (for frame feel), but the backend clamp is authoritative — a future tool can call `crop_one` directly and trust it.
+- **Crop-tool e2e needs a real image, not a stub URL.** The frame editor gates on the preview `<img>`'s `onLoad` (it reads `naturalWidth/Height`). The e2e [`mocks/system.ts`](../tests/e2e/mocks/system.ts) `imageAssetUrl` therefore returns a real 1×1 PNG **data URL**, not the old `mock-asset://` stub that 404s — otherwise Crop never enables in a plain Chromium. Pure-DOM geometry (drag math, aspect lock) is unit-tested in [`cropGeometry.test.ts`](../src/tools/image-crop/cropGeometry.test.ts), so the e2e only proves the happy path is wired.
+
+---
+
 ## Audio Extractor: per-track ffmpeg call, asymmetric `_audio[_N]` naming
 
 The Audio Extractor (commits `15961cd…e0e8ad2`) takes a single video in and writes one MP3 per audio track. Two decisions worth pinning so they don't get "optimized" later:

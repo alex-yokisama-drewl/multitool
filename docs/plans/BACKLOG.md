@@ -17,7 +17,6 @@ Plans and ideas not yet committed to a milestone. When an item moves into active
   - Build libheif + libde265 from source in `build.rs` end-to-end (heavy: minutes-long first build, cmake + C++ compiler required on every builder).
   - Wait for the ecosystem (pure-Rust HEVC decoder, or an "all-in-one" prebuilt libheif). HEVC patents make a pure-Rust decoder unlikely soon.
   HEIC **encode** is doubly out of scope: needs x265 (GPL + patent-encumbered).
-- **Image crop.**
 - **Image resize.**
 - **Image compress.**
 
