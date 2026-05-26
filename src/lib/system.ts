@@ -9,6 +9,7 @@ import {
 } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { rasterImageExtensions } from "./imageFormats";
 
 // Wrap convertFileSrc so all `@tauri-apps/api` access happens at the
 // system.ts seam — same pattern as the picker / opener wrappers. The
@@ -85,6 +86,21 @@ export async function pickConvertibleImages(): Promise<string[] | null> {
   });
   if (result === null) return null;
   return Array.isArray(result) ? result : [result];
+}
+
+// Single-select picker for the Image Crop tool. The crop output preserves
+// the source format, so the dialog filter is restricted to the encodable
+// raster set — fetched from the backend via `rasterImageExtensions()` so it
+// can't drift from the Rust `RasterFormat` list. The filter is advisory; the
+// Rust side re-validates on decode + extension match.
+export async function pickRasterImage(): Promise<string | null> {
+  const extensions = await rasterImageExtensions();
+  const result = await open({
+    multiple: false,
+    directory: false,
+    filters: [{ name: "Images", extensions }],
+  });
+  return typeof result === "string" ? result : null;
 }
 
 // Multi-select picker for the Audio Format Converter tool. Accepts every
