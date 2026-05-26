@@ -64,11 +64,23 @@ export function pickVideoFile(): Promise<string | null> {
   return Promise.resolve(MOCK_VIDEO_PATHS[0] ?? null);
 }
 
-export function imageAssetUrl(path: string): string {
-  // No Tauri asset protocol in a plain browser — return a harmless URL
-  // so `<img>` rendering doesn't blow up. The spec doesn't assert on
-  // pixels; alt="" + a broken URL is fine.
-  return `mock-asset://${path}`;
+// Image Crop's single-select picker. Returns a canned image path; the crop
+// preview's `<img>` resolves to the data URL from `imageAssetUrl` below, so
+// its `onLoad` fires and the frame editor renders.
+export function pickRasterImage(): Promise<string | null> {
+  return Promise.resolve("/tmp/multitool-e2e/photo.png");
+}
+
+// A real, decodable 1×1 PNG. The Image Crop tool gates its frame editor on
+// the preview image's `onLoad` (it reads naturalWidth/Height), so a stub URL
+// that 404s wouldn't fire load. A data URL loads in a plain browser; tools
+// that only show thumbnails (the converter) are unaffected by the swap.
+const ONE_BY_ONE_PNG =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+export function imageAssetUrl(_path: string): string {
+  void _path;
+  return ONE_BY_ONE_PNG;
 }
 
 // Same shim for audio. Trimmer e2e doesn't drive Web Audio decode — the
