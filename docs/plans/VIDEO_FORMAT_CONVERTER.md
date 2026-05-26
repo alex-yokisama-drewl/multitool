@@ -28,9 +28,9 @@ The shim is the only place that knows ffmpeg's CLI shape — per-tool code (this
 
 ## Inputs
 
-Multi-file picker, video files only. Accepted source extensions for v1:
+Multi-file picker, video files only. Picker extension filter:
 
-`mp4`, `mov`, `mkv`, `webm`, `avi`
+`mp4`, `m4v`, `mov`, `mkv`, `webm`, `avi`, `3gp`, `3g2`, `ts`, `mts`, `m2ts`, `mxf`, `flv`, `ogv`, `wmv`, `asf`, `vob`, `divx`, `mpg`, `mpeg`
 
 Sniffing: file-extension based at the picker (consistent with audio-format-converter); ffmpeg itself does format auto-detection, so a misnamed extension still works at runtime — the picker filter is purely a UX guard. Empty selection = no-op. Picker lives in [`src/lib/system.ts`](../../src/lib/system.ts) as a new `pickVideoFiles()` helper.
 
@@ -42,26 +42,26 @@ Sniffing: file-extension based at the picker (consistent with audio-format-conve
 
 **Baked-in codec recipes** (no UI for these in v1 — they're the whole point of "format dropdown only"):
 
-| Target | Container | Video codec | Video quality | Audio codec | Audio quality |
+| Target | Container | Video codec | Video quality / filters | Audio codec | Audio quality |
 | --- | --- | --- | --- | --- | --- |
-| `Mp4` | mp4 | H.264 (libx264) | CRF 23, `-preset medium` | AAC (native ffmpeg) | 128 kbit/s |
-| `Webm` | webm | VP9 (libvpx-vp9) | CRF 32, `-b:v 0`, `-row-mt 1` | Opus (libopus) | 96 kbit/s |
+| `Mp4` | mp4 | H.264 (libx264) | CRF 23, `-preset medium`, `-vf scale=trunc(iw/2)*2:trunc(ih/2)*2`, `-pix_fmt yuv420p` | AAC (native ffmpeg) | 128 kbit/s |
+| `Webm` | webm | VP9 (libvpx-vp9) | CRF 32, `-b:v 0`, `-row-mt 1`, `-vf scale=trunc(iw/2)*2:trunc(ih/2)*2` | Opus (libopus) | 96 kbit/s |
 | `Mkv` | matroska | copy (`-c:v copy`) | n/a (stream copy) | copy (`-c:a copy`) | n/a |
 
 Rationale for the picks:
 
-- **mp4 = H.264 + AAC** is the universal-compatibility default; CRF 23 is x264's documented "visually lossless-ish" sweet spot.
-- **webm = VP9 + Opus** is the patent-free pairing modern browsers expect; CRF 32 with `-b:v 0` is the constant-quality mode VP9 actually wants (`-b:v 0` disables the bitrate cap that VP9's defaults otherwise impose).
-- **mkv = stream copy** is near-instant remux; if user wants real re-encoding into mkv, that's the v2/Video Compress story.
+- **mp4 = H.264 + AAC** is the universal-compatibility default; CRF 23 is x264's documented "visually lossless-ish" sweet spot. The scale filter rounds odd source dimensions down to even (H.264 in 4:2:0 fails the encode on odd dims with "height not divisible by 2"). `-pix_fmt yuv420p` forces 4:2:0 chroma so the output plays everywhere; without it an input in yuv444p or 10-bit produces an mp4 some players refuse.
+- **webm = VP9 + Opus** is the patent-free pairing modern browsers expect; CRF 32 with `-b:v 0` is the constant-quality mode VP9 actually wants (`-b:v 0` disables the bitrate cap that VP9's defaults otherwise impose). Same even-dimension scale filter — libvpx-vp9 also rejects odd dimensions on most configurations.
+- **mkv = stream copy** is near-instant remux; if user wants real re-encoding into mkv, that's the v2/Video Compress story. No scale filter (nothing being re-encoded).
 
 If the user picks mkv and the source streams are codecs mkv doesn't accept (vanishingly rare in practice — mkv is permissive), ffmpeg errors and we report the per-file failure. We will not silently re-encode to "fix" a copy.
 
 ## Output
 
 - **Location:** same directory as the input (per [ARCHITECTURE §3.3](../ARCHITECTURE.md#33-file-io-conventions)).
-- **Naming:** `{stem}_converted.{ext}` (matches audio-format-converter's `{stem}_converted.{ext}` pattern; the suffix disambiguates from inputs with the same stem but different container).
+- **Naming:** `{stem}.{ext}` (no per-tool suffix — matches the audio + image format-converter precedent's clean naming where the extension change is the only differentiator).
 - **Duplicate handling:** [`multitool_core::fs::unique_path`](../../src-tauri/multitool-core/src/fs.rs) — appends ` (1)`, ` (2)`, … per spec. Never overwrite.
-- **Same-format conversion** (e.g. user picks mp4 for an mp4 input): allowed. Output suffix still makes the result distinct from the input; user gets a re-encoded copy.
+- **Same-format conversion** (e.g. user picks mp4 for an mp4 input): allowed. Output collides with the source path, so `unique_path` resolves it to `{stem} (1).{ext}` — same disambiguation policy as the other tools.
 
 ## UX flow
 
@@ -79,7 +79,7 @@ Cancellation: `cancel_job` kills the in-flight ffmpeg subprocess. Files already 
 
 - **ffmpeg binary missing at runtime** (resource path didn't resolve, e.g. dev build with stale resources/). Orchestrator returns `AppError::ProcessingFailed { detail: "ffmpeg binary not found at …" }` before processing any file. Distinct from per-file failures.
 - **Source file unreadable / not actually a video.** ffmpeg exits non-zero; we record per-file `Skipped { path, reason }` and continue. Same shape as audio-format-converter's skip path.
-- **Output path collides with input** (target format == source format, no `_converted` suffix would have collided): suffix + `unique_path` together guarantee no overwrite. Verify in tests.
+- **Output path collides with input** (target format == source format): `unique_path` resolves the collision to `{stem} (1).{ext}`; source is never overwritten. Verified in tests.
 - **Cancellation arrives between files**: the next file simply isn't started; `child.kill()` is a no-op.
 - **Cancellation arrives mid-encode**: `child.kill()` reaps the ffmpeg process; partial output file is unlinked; orchestrator returns `Cancelled` after the in-flight file's cleanup.
 - **Zero-byte / zero-duration source** (some screen recorders produce these): ffmpeg's `-progress` never reports `out_time_us`; progress bar would sit at 0 then jump to 100. Acceptable; not worth a workaround.
@@ -91,7 +91,7 @@ Cancellation: `cancel_job` kills the in-flight ffmpeg subprocess. Files already 
 ## Acceptance
 
 - [ ] Tool tile appears on dashboard under the `video` category. (New category — extends `ToolCategory` union + `toolCategories` list in [`src/tools/registry.ts`](../../src/tools/registry.ts). Acknowledged as the one deliberate shared edit per [ADDING_A_TOOL §5](../ADDING_A_TOOL.md). No new tile-color token — tile uses the existing `teal` token, currently unused by any tool.)
-- [ ] Picking 1+ video files, choosing a target format, and clicking Convert produces output files in the same directory with `_converted` suffix, name-collision safe.
+- [ ] Picking 1+ video files, choosing a target format, and clicking Convert produces output files in the same directory with the target extension, name-collision safe via `unique_path`.
 - [ ] Each format (mp4 / webm / mkv) round-trips at least one fixture file end-to-end in a Rust integration test (small synthetic clips, generated by ffmpeg itself in a build-time test fixture or committed as binary fixtures).
 - [ ] Cancellation mid-encode kills the ffmpeg child, deletes the partial in-flight output, and returns `Cancelled`.
 - [ ] Per-file failure (corrupt source) is reported as a skip; the batch continues.
@@ -124,6 +124,7 @@ Working pattern lifted from the audio-trimmer commit log (one feature axis per c
 | 3 | done `c8d4397` | `feat(video): convert + orchestrator (single + batch)` | `multitool-core/src/tools/video_format_converter/{mod.rs,convert.rs,job.rs}`. `TargetFormat::{Mp4,Webm,Mkv}` + recipe table → `Vec<OsString>` arg builder (pure, fully unit-tested). `convert(source, opts, on_file_progress, cancel)` probes duration via `ffmpeg::probe_duration_secs`, calls `ffmpeg::run` with built args, emits per-callback fraction `out_time_us/duration` clamped to `[0,1]`, deletes partial output on any error (incl. cancel). `job.rs` orchestrates: `Progress::{Started,FileProgress,Succeeded,Skipped}`, empty-inputs → `ProcessingFailed`, between-file + mid-encode cancel both surface as `AppError::Cancelled`, per-file failures → skip-and-continue. Integration tests synthesize 1–30s clips via the bundled ffmpeg and round-trip through mp4/webm/mkv. **18 new unit tests (197 total in multitool-core lib), all 3 smoke + e2e integration suites green.** **Gotchas:** (a) Two callbacks need shared access to the caller's `on_progress` emitter — the orchestrator wraps it in `RefCell<F>` so the inner per-file FileProgress callback can re-enter the same emitter. Errors from FileProgress emission are captured in a sibling `RefCell<Option<AppError>>` and propagated after `convert` returns, because `ffmpeg::run`'s callback signature is infallible. First implementation buffered fractions and flushed after `convert` returned, which broke the mid-encode-cancel test (the test triggers cancel from inside the FileProgress handler, but deferred handlers fire too late). Synchronous emission via RefCell fixes it. (b) Clippy `cloned_ref_to_slice_refs` insists on `std::slice::from_ref(&input)` over `&[input.clone()]` — the audio orchestrator already follows that pattern; this commit matches. |
 | 4 | done `d40f98d` | `feat(video): Tauri command + TS IPC wrapper` | `src-tauri/src/tools/video_format_converter/mod.rs` — `#[tauri::command] convert_video_format` using `crate::ipc::run_streaming_job` (12 lines, copy of the audio shim). Registered in `register_commands`. `pickVideoFiles()` in `src/lib/system.ts` with the mp4/mov/mkv/webm/avi filter. `src/lib/tools/videoFormatConverter.ts` mirrors the audio wrapper — Progress union with `file-progress` variant for mid-encode fractions. 7 Vitest tests on the wrapper (103 frontend tests total). No new gotchas — all the shape work is the same boilerplate as the other converters. |
 | 5 | done `c68475a` | `feat(video): React UI + dashboard tile` | `src/tools/video-format-converter/{index.ts,VideoFormatConverter.tsx,types.ts}` with `idle → staging → running → done | error` state machine (mirrors `AudioFormatConverter`). Target-format radios for MP4/WebM/Matroska, per-file `<Progress>` bar bound to `state.current.fraction`, Cancel button, error envelope + skip-summary details. `ToolCategory` union + `toolCategories` list extended for new `"video"` category in `registry.ts`. Dashboard test updated to assert the new tile + section ordering + `teal` color. 7 component Vitest tests (110 total frontend, +7). **Gotchas:** (a) The radix `Progress` primitive in this codebase doesn't expose `aria-valuenow` reliably in the JSDOM test env (radix's source sets it but JSDOM/RTL didn't pick it up). Switched the progress-bar assertion to `aria-label` (which the component sets explicitly with the percentage) — same `state.current.fraction` value, much more stable across radix version bumps. (b) Test mock for `convertVideoFormat` needs the real `ConvertHooks` type imported from the lib, not `any` — `@typescript-eslint/no-unsafe-call` catches the unsafe `.onProgress(...)` call otherwise. |
+| 5b | done `2ec6d5f` | `fix(video): even-dim scaling, drop _converted suffix, wider picker filter` | Emerged from manual testing. (a) Real `ProcessingFailed` on `webm → mp4` of a 1062×1043 source — libx264 requires even dimensions in 4:2:0. Added `-vf scale=trunc(iw/2)*2:trunc(ih/2)*2 -pix_fmt yuv420p` to mp4 recipe, scale filter only to webm. (b) Dropped the `_converted` suffix per user request — output is now `{stem}.{ext}`, same-format collisions route through `unique_path` to `{stem} (1).{ext}`. (c) Widened the picker filter from 5 to 20 common video extensions (m4v/3gp/ts/mts/m2ts/mxf/flv/ogv/wmv/asf/vob/divx/mpg/mpeg added). (d) Skipped video thumbnails for v1; added BACKLOG entry with both `<video>` and ffmpeg-extract paths sketched. Convert.rs + job.rs tests updated for the new naming. |
 | 6 | pending | `test(video): Playwright happy-path e2e` | Add `tests/e2e/mocks/videoFormatConverter.ts` (typed against the real wrapper) + a Playwright test driving dashboard → tile → form → success. Extend the Vite alias map in `vite.config.ts` if needed for the new mock. |
 | 7 | pending | `docs(video): DECISIONS entries + delete working doc + BACKLOG cleanup` | New DECISIONS entries: "Video: bundled ffmpeg sidecar over ffmpeg-next bindings" (license + CI surface rationale), "Video: GPL ffmpeg accepted for learning-project build" (vs LGPL-only at the cost of H.264 encode), "Video: format-dropdown-only v1 with baked codec recipes". Delete `docs/plans/VIDEO_FORMAT_CONVERTER.md`. Remove "Video format conversion" from `docs/plans/BACKLOG.md`. |
 
