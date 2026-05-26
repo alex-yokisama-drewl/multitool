@@ -6,6 +6,19 @@ Choices, caveats, and recipes that affect future work — patterns we must keep 
 
 ---
 
+## Audio Trimmer: source-format-preserving, browser-side preview, shared `audio_codecs` module
+
+The Audio Trimmer (commits `2cab704…cc136e6`) is the second audio tool and the trigger for hoisting decode + encode out of the converter:
+
+- **Shared codec module.** Decode + encode primitives moved to [`multitool_core::audio_codecs::{decode, encode}`](../src-tauri/multitool-core/src/audio_codecs/). Both tools (and any future audio tool — compress, concat) depend on this surface. The converter's `audio_format_converter::convert` keeps `TargetFormat` / `ChannelMode` / `Opts` / `convert_one` but routes decode and the four encoders through the shared module. **Public API unchanged.**
+- **Output preserves source format.** Picker is restricted to `wav / mp3 / flac / ogg / oga` — the four formats with available encoders. m4a / aac / aiff / caf / mkv / webm are Symphonia-decodable but not round-trippable without a transcode; users chain through the Audio Format Converter for that case. `Opts` carries no encoder knobs (bitrate / quality / bit depth); per-format defaults live as constants on `audio_trimmer::job` (WAV 16-bit, MP3 192 kbps, OGG q=5.0, FLAC level = no-op).
+- **Browser-side preview.** [`src/lib/audioPreview.ts`](../src/lib/audioPreview.ts) fetches via the Tauri asset protocol (`audioAssetUrl` → per-pick `allow_media_preview` scope grant), decodes through Web Audio's `decodeAudioData`, and serves *both* the waveform peaks (1000 bins, min/max per bin, mono-mixed) and the `AudioBufferSourceNode + GainNode` preview chain. Fade preview uses `linearRampToValueAtTime` to approximate the encoder's gain envelope — accurate enough for "did I pick the right region" iteration; no Rust round-trip per Preview click. **Trade-off:** decodeAudioData holds the full PCM in memory in the browser; fine for v1's tiny-to-moderate files. Streaming peaks + a Rust-side waveform command is a follow-up if hour-long files become a use case.
+- **Fade UX: checkbox + fixed duration.** The UI exposes Fade-in / Fade-out as checkboxes that toggle `FADE_PRESET_MS = 1000`. Rust `Opts` keeps `fade_in_ms` / `fade_out_ms` as `u32` so unit tests can hit edge cases (zero, equal-to-window, overlap-clamp).
+- **Silent range clamp.** Setters enforce `0 ≤ start ≤ end − 1 ≤ durationMs − 1`. No "End must be after Start" alert; instead the input silently snaps to the closest legal value. Any start/end/fade change while preview is playing stops the preview (gain envelope was baked in at schedule time).
+- **Asset-protocol scope generalized.** `allow_image_preview` → `allow_media_preview` with `IMAGE_EXTS + AUDIO_EXTS` allowlists. The dynamic-per-pick policy ("Asset protocol scope" entry below) extends to media families without growing the command surface. Future video preview tools follow the same shape.
+
+---
+
 ## Audio stack: Symphonia for decode, format-specific encoders, no resampler
 
 The Audio Format Converter (commits `8351b63…08eb569`) intentionally splits decoder and encoder concerns rather than picking a single all-in-one crate.
