@@ -3,6 +3,7 @@
 pub mod asset_scope;
 pub mod fs;
 pub mod ipc;
+pub mod system;
 pub mod tools;
 
 use tauri::Manager;
