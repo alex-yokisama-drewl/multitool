@@ -11,9 +11,10 @@
 //!    streams throttled [`FfmpegProgress`] events to the supplied callback,
 //!    keeps the last ~64 stderr lines in a ring buffer for failure detail,
 //!    and kills + reaps the child if the supplied [`CancellationToken`] fires.
-//! 3. **[`probe_duration_secs`].** Invokes `ffmpeg -i <path>` and parses the
-//!    `Duration:` line from stderr. No `ffprobe` is bundled (saves ~50–80 MB
-//!    per installed bundle); the `Duration:` line format has been stable in
+//! 3. **[`probe_duration_secs`] / [`probe_audio_stream_count`].** Invoke
+//!    `ffmpeg -i <path>` and parse the `Duration:` / `Stream #...: Audio:`
+//!    lines from stderr respectively. No `ffprobe` is bundled (saves ~50–80
+//!    MB per installed bundle); both line formats have been stable in
 //!    ffmpeg for over a decade.
 //!
 //! The shim is the only place in the tree that knows ffmpeg's CLI shape.
@@ -227,6 +228,35 @@ pub fn probe_duration_secs(path: &Path) -> Result<f64, AppError> {
     })
 }
 
+/// Probe how many audio streams a media file declares, by parsing
+/// `ffmpeg -i <path>`'s stderr for `Stream #...: Audio: ...` lines.
+/// Returns 0 for sources with no audio (e.g. a silent video).
+///
+/// Same shape as [`probe_duration_secs`]: ffmpeg exits non-zero with no
+/// output target, so we ignore exit status and rely on stderr alone. The
+/// `Stream #N:M(...): Audio: <codec>, ...` line format has been stable
+/// for as long as the `Duration:` line — both are documented in ffmpeg's
+/// `dump_metadata` path and used by every container's demuxer.
+pub fn probe_audio_stream_count(path: &Path) -> Result<u32, AppError> {
+    let bin = binary_path();
+    let mut command = Command::new(&bin);
+    command
+        .arg("-hide_banner")
+        .arg("-i")
+        .arg(path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    suppress_console_window(&mut command);
+
+    let output = command.output().map_err(|err| AppError::ProcessingFailed {
+        detail: format!("failed to spawn ffmpeg at {}: {err}", bin.display()),
+    })?;
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    Ok(parse_audio_stream_count(&stderr))
+}
+
 /// Parse one `-progress pipe:1` line. Returns `Some` only for the
 /// `out_time_us` key. Trims a trailing `\r` so the Windows `\r\n` line
 /// ending parses identically to Unix `\n`.
@@ -260,6 +290,24 @@ fn parse_duration_line(stderr: &str) -> Option<f64> {
         return Some(h * 3600.0 + m * 60.0 + s);
     }
     None
+}
+
+/// Count audio streams in ffmpeg's `-i` banner output. A stream line looks
+/// like `  Stream #0:1(und): Audio: aac (LC), 48000 Hz, stereo, fltp, …`
+/// (the language tag in parens and a `[0xNNNN]` hex stream id may or may
+/// not be present). We only need two anchor substrings on the same line:
+/// the `Stream #` prefix and the `: Audio:` marker.
+fn parse_audio_stream_count(stderr: &str) -> u32 {
+    let mut count: u32 = 0;
+    for line in stderr.lines() {
+        // BufReader::lines() already handles `\n` for us in real callers;
+        // the explicit trim handles raw `\r\n` strings dropped into tests.
+        let trimmed = line.trim_end_matches('\r').trim();
+        if trimmed.starts_with("Stream #") && trimmed.contains(": Audio:") {
+            count = count.saturating_add(1);
+        }
+    }
+    count
 }
 
 /// On Windows, ensure spawning a child process doesn't pop a console window
@@ -345,5 +393,69 @@ mod tests {
             (secs - 37_845.99).abs() < 0.01,
             "expected ~37845.99, got {secs}"
         );
+    }
+
+    #[test]
+    fn audio_count_zero_for_video_only_banner() {
+        let stderr = "Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'silent.mp4':\n  \
+            Duration: 00:00:05.00, start: 0.000000, bitrate: 256 kb/s\n  \
+            Stream #0:0(und): Video: h264 (High), yuv420p, 1280x720, 256 kb/s\n";
+        assert_eq!(parse_audio_stream_count(stderr), 0);
+    }
+
+    #[test]
+    fn audio_count_one_for_standard_video_with_audio() {
+        let stderr = "Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'clip.mp4':\n  \
+            Duration: 00:00:10.00, start: 0.000000, bitrate: 1024 kb/s\n  \
+            Stream #0:0(und): Video: h264 (High), yuv420p, 1280x720\n  \
+            Stream #0:1(und): Audio: aac (LC), 48000 Hz, stereo, fltp, 128 kb/s\n";
+        assert_eq!(parse_audio_stream_count(stderr), 1);
+    }
+
+    #[test]
+    fn audio_count_handles_multiple_audio_tracks() {
+        // mkv with three audio tracks (typical: original + dub + commentary).
+        let stderr = "Input #0, matroska,webm, from 'movie.mkv':\n  \
+            Duration: 01:30:00.00, bitrate: 8000 kb/s\n  \
+            Stream #0:0(eng): Video: h264 (High), yuv420p, 1920x1080\n  \
+            Stream #0:1(eng): Audio: ac3, 48000 Hz, 5.1, fltp, 448 kb/s\n  \
+            Stream #0:2(jpn): Audio: aac, 48000 Hz, stereo, fltp, 160 kb/s\n  \
+            Stream #0:3(eng): Audio: aac, 48000 Hz, stereo, fltp, 96 kb/s\n  \
+            Stream #0:4(eng): Subtitle: subrip\n";
+        assert_eq!(parse_audio_stream_count(stderr), 3);
+    }
+
+    #[test]
+    fn audio_count_handles_hex_stream_id_in_bracket() {
+        // ts/mts containers print a `[0xNNNN]` hex stream id between the
+        // index and the language tag. Anchor substrings still match.
+        let stderr = "Input #0, mpegts, from 'broadcast.ts':\n  \
+            Duration: 00:30:00.00\n  \
+            Stream #0:0[0x100]: Video: h264, yuv420p, 1920x1080\n  \
+            Stream #0:1[0x101](eng): Audio: ac3, 48000 Hz, 5.1\n";
+        assert_eq!(parse_audio_stream_count(stderr), 1);
+    }
+
+    #[test]
+    fn audio_count_ignores_non_stream_audio_mentions() {
+        // The word "Audio" can appear in banner text outside a Stream line.
+        // We anchor on BOTH `Stream #` and `: Audio:` so prose isn't counted.
+        let stderr = "Input #0, mp4, from 'x.mp4':\n  \
+            Metadata:\n    \
+            handler_name    : SoundHandler (Audio mixed by …)\n  \
+            Stream #0:0: Video: h264\n";
+        assert_eq!(parse_audio_stream_count(stderr), 0);
+    }
+
+    #[test]
+    fn audio_count_handles_windows_crlf() {
+        let stderr = "  Stream #0:0(und): Video: h264, yuv420p\r\n  \
+             Stream #0:1(und): Audio: aac (LC), 48000 Hz, stereo\r\n";
+        assert_eq!(parse_audio_stream_count(stderr), 1);
+    }
+
+    #[test]
+    fn audio_count_zero_on_empty_input() {
+        assert_eq!(parse_audio_stream_count(""), 0);
     }
 }
