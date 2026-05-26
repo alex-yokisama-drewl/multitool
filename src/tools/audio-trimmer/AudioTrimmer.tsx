@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Pause, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -130,6 +131,42 @@ export function AudioTrimmer() {
     fade_out_ms: fadeOut ? FADE_PRESET_MS : 0,
   });
 
+  // Any change to the trim window or fades invalidates the running
+  // preview — its `[startMs, endMs]` window and gain envelope were
+  // baked in at scheduling time. Stop it; user can hit Play again
+  // with the new values. The clamps below also enforce a silent
+  // minimum trim duration (start + 1 ms ≤ end ≤ source duration) so
+  // the Trim button never has to disable for a zero-length window.
+  const upperBound = (): number =>
+    state.kind === "picked"
+      ? state.source.durationMs
+      : Number.POSITIVE_INFINITY;
+  const onStartChange = (ms: number) => {
+    stopPreview();
+    setStartMs(Math.max(0, Math.min(ms, endMs - 1, upperBound() - 1)));
+  };
+  const onEndChange = (ms: number) => {
+    stopPreview();
+    setEndMs(Math.min(upperBound(), Math.max(ms, startMs + 1)));
+  };
+  const onRangeChange = (s: number, e: number) => {
+    // Waveform sends both endpoints — clamp once, set both.
+    stopPreview();
+    const upper = upperBound();
+    const newStart = Math.max(0, Math.min(s, upper - 1));
+    const newEnd = Math.min(upper, Math.max(e, newStart + 1));
+    setStartMs(newStart);
+    setEndMs(newEnd);
+  };
+  const onFadeInToggle = (b: boolean) => {
+    stopPreview();
+    setFadeIn(b);
+  };
+  const onFadeOutToggle = (b: boolean) => {
+    stopPreview();
+    setFadeOut(b);
+  };
+
   const trim = async () => {
     if (state.kind !== "picked") return;
     stopPreview();
@@ -166,8 +203,6 @@ export function AudioTrimmer() {
     setState({ kind: "idle" });
   };
 
-  const rangeInvalid = endMs <= startMs;
-
   return (
     <div className="space-y-6">
       <header>
@@ -197,13 +232,13 @@ export function AudioTrimmer() {
           source={state.source}
           startMs={startMs}
           endMs={endMs}
-          setStartMs={setStartMs}
-          setEndMs={setEndMs}
+          onStartChange={onStartChange}
+          onEndChange={onEndChange}
+          onRangeChange={onRangeChange}
           fadeIn={fadeIn}
           fadeOut={fadeOut}
-          setFadeIn={setFadeIn}
-          setFadeOut={setFadeOut}
-          rangeInvalid={rangeInvalid}
+          onFadeInToggle={onFadeInToggle}
+          onFadeOutToggle={onFadeOutToggle}
           previewing={previewing}
           togglePreview={togglePreview}
           onTrim={() => void trim()}
@@ -264,13 +299,13 @@ interface PickedViewProps {
   source: AudioPreviewSource;
   startMs: number;
   endMs: number;
-  setStartMs: (ms: number) => void;
-  setEndMs: (ms: number) => void;
+  onStartChange: (ms: number) => void;
+  onEndChange: (ms: number) => void;
+  onRangeChange: (startMs: number, endMs: number) => void;
   fadeIn: boolean;
   fadeOut: boolean;
-  setFadeIn: (b: boolean) => void;
-  setFadeOut: (b: boolean) => void;
-  rangeInvalid: boolean;
+  onFadeInToggle: (b: boolean) => void;
+  onFadeOutToggle: (b: boolean) => void;
   previewing: boolean;
   togglePreview: () => void;
   onTrim: () => void;
@@ -283,13 +318,13 @@ function PickedView({
   source,
   startMs,
   endMs,
-  setStartMs,
-  setEndMs,
+  onStartChange,
+  onEndChange,
+  onRangeChange,
   fadeIn,
   fadeOut,
-  setFadeIn,
-  setFadeOut,
-  rangeInvalid,
+  onFadeInToggle,
+  onFadeOutToggle,
   previewing,
   togglePreview,
   onTrim,
@@ -312,26 +347,34 @@ function PickedView({
         durationMs={source.durationMs}
         startMs={startMs}
         endMs={endMs}
-        onChange={(s, e) => {
-          setStartMs(s);
-          setEndMs(e);
-        }}
+        onChange={onRangeChange}
       />
 
-      <div className="grid grid-cols-2 gap-4">
+      {/* Start input | Play/Stop button | End input. Justify-between
+          aligns the End block's contents to the right edge of the row. */}
+      <div className="flex items-end justify-between gap-4">
         <TimeInput
           id="trim-start"
           label="Start"
           ms={startMs}
           max={source.durationMs}
-          onChange={setStartMs}
+          onChange={onStartChange}
         />
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={togglePreview}
+          aria-label={previewing ? "Stop" : "Play"}
+        >
+          {previewing ? <Pause /> : <Play />}
+        </Button>
         <TimeInput
           id="trim-end"
           label="End"
           ms={endMs}
           max={source.durationMs}
-          onChange={setEndMs}
+          onChange={onEndChange}
+          align="right"
         />
       </div>
 
@@ -341,7 +384,7 @@ function PickedView({
           <input
             type="checkbox"
             checked={fadeIn}
-            onChange={(e) => setFadeIn(e.target.checked)}
+            onChange={(e) => onFadeInToggle(e.target.checked)}
             aria-label="Fade in"
           />
           Fade in ({FADE_PRESET_MS} ms)
@@ -350,29 +393,15 @@ function PickedView({
           <input
             type="checkbox"
             checked={fadeOut}
-            onChange={(e) => setFadeOut(e.target.checked)}
+            onChange={(e) => onFadeOutToggle(e.target.checked)}
             aria-label="Fade out"
           />
           Fade out ({FADE_PRESET_MS} ms)
         </label>
       </fieldset>
 
-      {rangeInvalid && (
-        <div
-          role="alert"
-          className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive"
-        >
-          End must be after Start.
-        </div>
-      )}
-
       <div className="flex gap-3">
-        <Button onClick={onTrim} disabled={rangeInvalid}>
-          Trim
-        </Button>
-        <Button variant="outline" onClick={togglePreview}>
-          {previewing ? "Stop" : "Preview"}
-        </Button>
+        <Button onClick={onTrim}>Trim</Button>
         <Button variant="outline" onClick={onPickDifferent}>
           Pick different file
         </Button>
@@ -387,9 +416,20 @@ interface TimeInputProps {
   ms: number;
   max: number;
   onChange: (ms: number) => void;
+  /// "right" right-aligns the input's text + label so the End block
+  /// reads with its content flush against the row's right edge. Default
+  /// is left-aligned (used by Start).
+  align?: "left" | "right";
 }
 
-function TimeInput({ id, label, ms, max, onChange }: TimeInputProps) {
+function TimeInput({
+  id,
+  label,
+  ms,
+  max,
+  onChange,
+  align = "left",
+}: TimeInputProps) {
   // Render the live value as a controlled string so partial edits
   // ("00:02:") don't get reformatted mid-keystroke. Commit on blur
   // (and Enter); reformatted display lands then.
@@ -415,8 +455,9 @@ function TimeInput({ id, label, ms, max, onChange }: TimeInputProps) {
     setText(formatMs(clamped));
   };
 
+  const alignClass = align === "right" ? "text-right" : "text-left";
   return (
-    <div className="space-y-1">
+    <div className={`space-y-1 ${align === "right" ? "text-right" : ""}`}>
       <Label htmlFor={id}>{label}</Label>
       <Input
         id={id}
@@ -428,7 +469,7 @@ function TimeInput({ id, label, ms, max, onChange }: TimeInputProps) {
         onKeyDown={(e) => {
           if (e.key === "Enter") commit(e.currentTarget.value);
         }}
-        className="font-mono w-32"
+        className={`font-mono w-32 ${alignClass}`}
       />
     </div>
   );
