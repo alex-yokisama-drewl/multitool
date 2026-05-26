@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import { audioExtractorTool } from "./audio-extractor";
 import { audioFormatConverterTool } from "./audio-format-converter";
 import { audioTrimmerTool } from "./audio-trimmer";
 import { imageFormatConverterTool } from "./image-format-converter";
@@ -52,4 +53,5 @@ export const tools: readonly Tool[] = [
   audioFormatConverterTool,
   audioTrimmerTool,
   videoFormatConverterTool,
+  audioExtractorTool,
 ];
