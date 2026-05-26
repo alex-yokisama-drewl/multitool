@@ -14,3 +14,4 @@ pub mod audio_trimmer;
 pub mod image_format_converter;
 pub mod images_to_pdf;
 pub mod pdf_to_images;
+pub mod video_format_converter;
