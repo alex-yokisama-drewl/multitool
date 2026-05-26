@@ -31,6 +31,10 @@ describe("Dashboard", () => {
     expect(
       within(imageSection).getByRole("link", { name: /format converter/i }),
     ).toBeInTheDocument();
+    // Image section also carries the Crop tool.
+    expect(
+      within(imageSection).getByRole("link", { name: /crop/i }),
+    ).toBeInTheDocument();
     expect(
       within(audioSection).getByRole("link", { name: /format converter/i }),
     ).toBeInTheDocument();
@@ -78,6 +82,11 @@ describe("Dashboard", () => {
         name: /format converter/i,
       }),
     ).toBeInTheDocument();
+    // Image section now carries the Format Converter + Crop.
+    expect(
+      within(imageSection).getByRole("link", { name: /crop/i }),
+    ).toBeInTheDocument();
+    expect(within(imageSection).getAllByRole("link")).toHaveLength(2);
     expect(
       within(audioSection).getByRole("link", {
         name: /format converter/i,
@@ -128,6 +137,9 @@ describe("Dashboard", () => {
     const imageFormat = within(imageSection).getByRole("link", {
       name: /format converter/i,
     });
+    const imageCrop = within(imageSection).getByRole("link", {
+      name: /crop/i,
+    });
     const audioFormat = within(audioSection).getByRole("link", {
       name: /format converter/i,
     });
@@ -144,6 +156,7 @@ describe("Dashboard", () => {
     expect(pdfToImages.getAttribute("data-tile-color")).toBe("rose");
     expect(imagesToPdf.getAttribute("data-tile-color")).toBe("amber");
     expect(imageFormat.getAttribute("data-tile-color")).toBe("sky");
+    expect(imageCrop.getAttribute("data-tile-color")).toBe("violet");
     expect(audioFormat.getAttribute("data-tile-color")).toBe("emerald");
     expect(audioTrimmer.getAttribute("data-tile-color")).toBe("violet");
     expect(videoFormat.getAttribute("data-tile-color")).toBe("teal");
