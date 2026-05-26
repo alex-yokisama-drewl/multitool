@@ -140,6 +140,44 @@ export async function pickAudioFile(): Promise<string | null> {
   return typeof result === "string" ? result : null;
 }
 
+// Single-select picker for the Audio Extractor tool. Same extension
+// filter as `pickVideoFiles` — the filter is advisory, ffmpeg sniffs the
+// actual container at decode time. Returns `null` on cancel.
+export async function pickVideoFile(): Promise<string | null> {
+  const result = await open({
+    multiple: false,
+    directory: false,
+    filters: [
+      {
+        name: "Video",
+        extensions: [
+          "mp4",
+          "m4v",
+          "mov",
+          "mkv",
+          "webm",
+          "avi",
+          "3gp",
+          "3g2",
+          "ts",
+          "mts",
+          "m2ts",
+          "mxf",
+          "flv",
+          "ogv",
+          "wmv",
+          "asf",
+          "vob",
+          "divx",
+          "mpg",
+          "mpeg",
+        ],
+      },
+    ],
+  });
+  return typeof result === "string" ? result : null;
+}
+
 // Multi-select picker for the Video Format Converter tool. The filter
 // is advisory — ffmpeg sniffs the actual container at decode time, so a
 // renamed file still routes through the orchestrator's skip+continue.
