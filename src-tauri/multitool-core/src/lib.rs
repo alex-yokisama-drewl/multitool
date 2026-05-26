@@ -8,6 +8,7 @@
 
 pub mod audio_codecs;
 pub mod error;
+pub mod ffmpeg;
 pub mod fs;
 pub mod image;
 pub mod ipc;
