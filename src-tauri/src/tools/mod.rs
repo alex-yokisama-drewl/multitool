@@ -23,6 +23,7 @@ pub fn register_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri
     builder.invoke_handler(tauri::generate_handler![
         crate::ipc::cancel_job,
         crate::asset_scope::allow_media_preview,
+        crate::system::supported_raster_formats,
         audio_extractor::extract_audio,
         audio_format_converter::convert_audio_format,
         audio_trimmer::trim_audio,

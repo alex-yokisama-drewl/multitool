@@ -240,4 +240,16 @@ mod tests {
             })
         );
     }
+
+    #[test]
+    fn descriptor_list_is_built_for_every_format_with_unique_ids() {
+        // Mirrors what the `supported_raster_formats` Tauri command does (the
+        // shell command can't be unit-tested — see ADDING_A_TOOL §2). Asserts
+        // the map produces one descriptor per format and that ids are unique,
+        // so the frontend can key on `id` safely.
+        let descriptors: Vec<_> = RasterFormat::all().iter().map(|f| f.descriptor()).collect();
+        assert_eq!(descriptors.len(), RasterFormat::all().len());
+        let unique_ids: std::collections::HashSet<_> = descriptors.iter().map(|d| d.id).collect();
+        assert_eq!(unique_ids.len(), descriptors.len());
+    }
 }
