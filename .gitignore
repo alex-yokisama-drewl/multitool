@@ -14,8 +14,9 @@ dist-ssr
 target
 *.local
 
-# pdfium native binary staged for Tauri bundling by `src-tauri/build.rs`
+# Native binaries staged for Tauri bundling by `src-tauri/build.rs`
 src-tauri/resources/pdfium/
+src-tauri/resources/ffmpeg/
 
 # Coverage (cargo-llvm-cov / vitest)
 coverage
