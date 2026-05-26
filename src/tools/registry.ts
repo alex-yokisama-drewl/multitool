@@ -4,8 +4,9 @@ import { audioTrimmerTool } from "./audio-trimmer";
 import { imageFormatConverterTool } from "./image-format-converter";
 import { imagesToPdfTool } from "./images-to-pdf";
 import { pdfToImagesTool } from "./pdf-to-images";
+import { videoFormatConverterTool } from "./video-format-converter";
 
-export type ToolCategory = "pdf" | "image" | "audio";
+export type ToolCategory = "pdf" | "image" | "audio" | "video";
 
 export interface ToolCategoryMeta {
   id: ToolCategory;
@@ -19,6 +20,7 @@ export const toolCategories: readonly ToolCategoryMeta[] = [
   { id: "pdf", label: "PDF" },
   { id: "image", label: "Image" },
   { id: "audio", label: "Audio" },
+  { id: "video", label: "Video" },
 ];
 
 // Tile colors are CSS-variable tokens defined in src/app/globals.css as
@@ -49,4 +51,5 @@ export const tools: readonly Tool[] = [
   pdfToImagesTool,
   audioFormatConverterTool,
   audioTrimmerTool,
+  videoFormatConverterTool,
 ];
