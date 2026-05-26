@@ -10,6 +10,10 @@ import {
   pickConvertibleImages,
   revealInFolder,
 } from "@/lib/system";
+import {
+  getRasterFormats,
+  type RasterFormatDescriptor,
+} from "@/lib/imageFormats";
 import { convertImageFormat } from "@/lib/tools/imageFormatConverter";
 import { fileName } from "@/lib/utils";
 import type {
@@ -37,13 +41,11 @@ type ViewState =
     }
   | { kind: "done"; paths: string[]; result: JobResult };
 
-// Targets that can't carry alpha — JPEG and BMP. The UI only shows the
-// alpha-handling selector when one of these is active; the encoder ignores
-// the value for alpha-supporting targets.
-const ALPHA_LESS_TARGETS: ReadonlySet<TargetFormat> = new Set<TargetFormat>([
-  "jpeg",
-  "bmp",
-]);
+// Per-format UI hint appended to the backend-supplied display name. WebP
+// output is lossless-only (image 0.25's encoder); every other format needs
+// no qualifier. Purely presentational — the format SET still comes from the
+// `supported_raster_formats` IPC, not this map.
+const FORMAT_NOTE: Record<string, string> = { webp: "lossless" };
 
 const SVG_EXT_RX = /\.svg$/i;
 
@@ -54,6 +56,11 @@ function hasSvgInputs(paths: string[]): boolean {
 export function ImageFormatConverter() {
   const navigate = useNavigate();
   const [state, setState] = useState<ViewState>({ kind: "idle" });
+
+  // Encodable-format set, fetched once from the backend (memoized in the
+  // wrapper). Drives both the target-format radios and the alpha-handling
+  // gate, so neither duplicates the Rust format list.
+  const [formats, setFormats] = useState<RasterFormatDescriptor[]>([]);
 
   // Options live outside ViewState so the user's choices survive state
   // transitions — same pattern as Images → PDF's pageSize.
@@ -70,6 +77,10 @@ export function ImageFormatConverter() {
   const [svgLongestEdgePx, setSvgLongestEdgePx] = useState<number>(1024);
 
   const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    void getRasterFormats().then(setFormats);
+  }, []);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -159,7 +170,12 @@ export function ImageFormatConverter() {
     setState({ kind: "idle" });
   };
 
-  const showAlphaHandling = ALPHA_LESS_TARGETS.has(targetFormat);
+  // A target needs the alpha-handling selector when its encoder can't carry
+  // an alpha channel (JPEG/BMP). Derived from the backend descriptors rather
+  // than a hardcoded set.
+  const showAlphaHandling = formats.some(
+    (f) => f.id === targetFormat && !f.supports_alpha,
+  );
   const stagedHasSvg =
     state.kind === "staging" ||
     state.kind === "running" ||
@@ -235,26 +251,17 @@ export function ImageFormatConverter() {
               onValueChange={(value) => setTargetFormat(value as TargetFormat)}
               className="flex flex-wrap gap-6"
             >
-              <div className="flex items-center gap-2">
-                <RadioGroupItem id="target-png" value="png" />
-                <Label htmlFor="target-png">PNG</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <RadioGroupItem id="target-jpeg" value="jpeg" />
-                <Label htmlFor="target-jpeg">JPEG</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <RadioGroupItem id="target-webp" value="webp" />
-                <Label htmlFor="target-webp">WebP (lossless)</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <RadioGroupItem id="target-bmp" value="bmp" />
-                <Label htmlFor="target-bmp">BMP</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <RadioGroupItem id="target-tiff" value="tiff" />
-                <Label htmlFor="target-tiff">TIFF</Label>
-              </div>
+              {formats.map((fmt) => {
+                const note = FORMAT_NOTE[fmt.id];
+                return (
+                  <div key={fmt.id} className="flex items-center gap-2">
+                    <RadioGroupItem id={`target-${fmt.id}`} value={fmt.id} />
+                    <Label htmlFor={`target-${fmt.id}`}>
+                      {note ? `${fmt.name} (${note})` : fmt.name}
+                    </Label>
+                  </div>
+                );
+              })}
             </RadioGroup>
           </fieldset>
 
