@@ -8,12 +8,14 @@ const {
   revealInFolderMock,
   allowMediaPreviewMock,
   imageAssetUrlMock,
+  getRasterFormatsMock,
 } = vi.hoisted(() => ({
   convertMock: vi.fn(),
   pickConvertibleImagesMock: vi.fn(),
   revealInFolderMock: vi.fn(),
   allowMediaPreviewMock: vi.fn(),
   imageAssetUrlMock: vi.fn((path: string) => `asset://${path}`),
+  getRasterFormatsMock: vi.fn(),
 }));
 
 vi.mock("@/lib/tools/imageFormatConverter", () => ({
@@ -25,6 +27,29 @@ vi.mock("@/lib/system", () => ({
   allowMediaPreview: allowMediaPreviewMock,
   imageAssetUrl: imageAssetUrlMock,
 }));
+vi.mock("@/lib/imageFormats", () => ({
+  getRasterFormats: getRasterFormatsMock,
+}));
+
+// Mirrors the backend's supported_raster_formats descriptors — the target
+// radios + the alpha-handling gate are derived from this list.
+const RASTER_FORMATS = [
+  { id: "png", name: "PNG", extensions: ["png"], supports_alpha: true },
+  {
+    id: "jpeg",
+    name: "JPEG",
+    extensions: ["jpg", "jpeg"],
+    supports_alpha: false,
+  },
+  { id: "webp", name: "WebP", extensions: ["webp"], supports_alpha: true },
+  { id: "bmp", name: "BMP", extensions: ["bmp"], supports_alpha: false },
+  {
+    id: "tiff",
+    name: "TIFF",
+    extensions: ["tif", "tiff"],
+    supports_alpha: true,
+  },
+];
 
 import { ImageFormatConverter } from "./ImageFormatConverter";
 
@@ -49,6 +74,8 @@ describe("ImageFormatConverter", () => {
     pickConvertibleImagesMock.mockReset();
     revealInFolderMock.mockReset();
     allowMediaPreviewMock.mockReset();
+    getRasterFormatsMock.mockReset();
+    getRasterFormatsMock.mockResolvedValue(RASTER_FORMATS);
   });
 
   it("renders the idle state with a Select images button", () => {
