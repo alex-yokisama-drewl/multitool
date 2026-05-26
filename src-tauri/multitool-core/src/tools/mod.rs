@@ -9,6 +9,7 @@
 //! registry on this side. The registry pattern is enforced on the shell side
 //! (`src-tauri/src/tools/mod.rs::register_commands`).
 
+pub mod audio_extractor;
 pub mod audio_format_converter;
 pub mod audio_trimmer;
 pub mod image_format_converter;
