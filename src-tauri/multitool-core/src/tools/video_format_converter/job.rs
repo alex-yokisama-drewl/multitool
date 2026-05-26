@@ -260,7 +260,7 @@ mod tests {
     }
 
     #[test]
-    fn happy_path_single_mp4_to_mp4_writes_output_with_converted_suffix() {
+    fn happy_path_single_file_to_webm_writes_output_with_target_extension() {
         let dir = TempDir::new().unwrap();
         let input = synth_clip(dir.path(), "input.mp4", 1);
 
@@ -268,7 +268,7 @@ mod tests {
         let cancel = CancellationToken::new();
         let result = run_job(
             std::slice::from_ref(&input),
-            &opts(TargetFormat::Mp4),
+            &opts(TargetFormat::Webm),
             &cancel,
             |p| {
                 events.borrow_mut().push(p);
@@ -279,7 +279,7 @@ mod tests {
 
         assert_eq!(result.success_count, 1);
         assert_eq!(result.skip_count, 0);
-        let expected = dir.path().join("input_converted.mp4");
+        let expected = dir.path().join("input.webm");
         assert_eq!(result.first_output_path.as_ref(), Some(&expected));
         assert!(expected.exists());
 
@@ -386,7 +386,10 @@ mod tests {
         });
         assert!(matches!(result, Err(AppError::Cancelled)));
         assert_eq!(*calls.borrow(), 0);
-        assert!(!dir.path().join("input_converted.mp4").exists());
+        // Source was input.mp4, target mp4 — output would have collided
+        // and resolved to input (1).mp4. Neither it nor anything else
+        // beyond the source should have been written.
+        assert!(!dir.path().join("input (1).mp4").exists());
     }
 
     #[test]
@@ -408,7 +411,7 @@ mod tests {
         });
         assert!(matches!(result, Err(AppError::Cancelled)));
         // Partial output should have been cleaned up by `convert`.
-        assert!(!dir.path().join("long_converted.webm").exists());
+        assert!(!dir.path().join("long.webm").exists());
     }
 
     #[test]
@@ -430,18 +433,18 @@ mod tests {
             },
         );
         assert!(matches!(result, Err(AppError::Cancelled)));
-        assert!(dir.path().join("a_converted.mkv").exists());
-        assert!(!dir.path().join("b_converted.mkv").exists());
+        assert!(dir.path().join("a.mkv").exists());
+        assert!(!dir.path().join("b.mkv").exists());
     }
 
     #[test]
-    fn output_collision_routes_through_unique_path() {
+    fn same_format_conversion_routes_through_unique_path() {
+        // Converting `clip.mp4` to mp4 collides with the source itself —
+        // unique_path resolves the output to `clip (1).mp4` so the source
+        // is never overwritten.
         let dir = TempDir::new().unwrap();
         let input = synth_clip(dir.path(), "clip.mp4", 1);
-        // Pre-create the would-be output name so unique_path has to
-        // append " (1)".
-        std::fs::write(dir.path().join("clip_converted.mp4"), b"placeholder").unwrap();
-        let placeholder_bytes = std::fs::read(dir.path().join("clip_converted.mp4")).unwrap();
+        let source_bytes = std::fs::read(&input).unwrap();
 
         let cancel = CancellationToken::new();
         let result = run_job(
@@ -453,14 +456,11 @@ mod tests {
         .expect("collision-resolved write ok");
 
         assert_eq!(result.success_count, 1);
-        let resolved = dir.path().join("clip_converted (1).mp4");
+        let resolved = dir.path().join("clip (1).mp4");
         assert_eq!(result.first_output_path.as_ref(), Some(&resolved));
         assert!(resolved.exists());
-        // Pre-existing file untouched.
-        assert_eq!(
-            std::fs::read(dir.path().join("clip_converted.mp4")).unwrap(),
-            placeholder_bytes
-        );
+        // Source untouched.
+        assert_eq!(std::fs::read(&input).unwrap(), source_bytes);
     }
 
     #[test]

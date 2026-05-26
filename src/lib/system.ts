@@ -143,8 +143,9 @@ export async function pickAudioFile(): Promise<string | null> {
 // Multi-select picker for the Video Format Converter tool. The filter
 // is advisory — ffmpeg sniffs the actual container at decode time, so a
 // renamed file still routes through the orchestrator's skip+continue.
-// Extensions match the brief's input set; the output set (mp4/webm/mkv)
-// is a strict subset.
+// List covers the common video containers ffmpeg's standard GPL build
+// can demux; an exotic extension can still be picked via the dialog's
+// "All files" fallback if the user knows ffmpeg supports it.
 export async function pickVideoFiles(): Promise<string[] | null> {
   const result = await open({
     multiple: true,
@@ -152,7 +153,28 @@ export async function pickVideoFiles(): Promise<string[] | null> {
     filters: [
       {
         name: "Video",
-        extensions: ["mp4", "mov", "mkv", "webm", "avi"],
+        extensions: [
+          "mp4",
+          "m4v",
+          "mov",
+          "mkv",
+          "webm",
+          "avi",
+          "3gp",
+          "3g2",
+          "ts",
+          "mts",
+          "m2ts",
+          "mxf",
+          "flv",
+          "ogv",
+          "wmv",
+          "asf",
+          "vob",
+          "divx",
+          "mpg",
+          "mpeg",
+        ],
       },
     ],
   });
