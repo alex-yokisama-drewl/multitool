@@ -1,10 +1,15 @@
-//! Shared image-decoding helpers.
+//! Shared image-decoding helpers + the [`RasterFormat`] single source of
+//! truth for the formats the pipeline can both decode AND encode.
 //!
 //! Lives at the workspace level rather than under any one `tools/<tool>/`
 //! module so the helper doesn't grow tool-specific knobs. Tools that need
 //! to identify a failing input by path can wrap the returned `AppError`
 //! themselves — keeping the helper context-free keeps the signature
 //! stable as more tools adopt it.
+
+pub mod raster_format;
+
+pub use raster_format::{RasterFormat, RasterFormatDescriptor};
 
 use std::io::Cursor;
 

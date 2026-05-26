@@ -18,52 +18,15 @@ use image::{AnimationDecoder, DynamicImage, ImageFormat, RgbImage};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
-use crate::image::{decode_oriented, image_to_app_err};
+use crate::image::{decode_oriented, image_to_app_err, RasterFormat};
 
-/// Raster format the converter emits. Vector outputs are intentionally out of
-/// scope (the brief explicitly rejects "fake" raster→vector conversions like
-/// PNG → SVG tracing).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum TargetFormat {
-    Png,
-    Jpeg,
-    /// **Lossless only** — `image` 0.25's WebP encoder is lossless. Adding a
-    /// lossy lane would require the `webp` crate (libwebp C bindings) and a
-    /// native dep, deferred to a future commit if requested.
-    Webp,
-    Bmp,
-    Tiff,
-}
-
-impl TargetFormat {
-    /// File extension (no leading dot) for output naming.
-    pub fn extension(self) -> &'static str {
-        match self {
-            Self::Png => "png",
-            Self::Jpeg => "jpg",
-            Self::Webp => "webp",
-            Self::Bmp => "bmp",
-            Self::Tiff => "tif",
-        }
-    }
-
-    /// True when the encoder preserves an alpha channel without flattening.
-    /// JPEG and BMP have no alpha; PNG/WebP/TIFF do.
-    pub fn supports_alpha(self) -> bool {
-        matches!(self, Self::Png | Self::Webp | Self::Tiff)
-    }
-
-    fn image_format(self) -> ImageFormat {
-        match self {
-            Self::Png => ImageFormat::Png,
-            Self::Jpeg => ImageFormat::Jpeg,
-            Self::Webp => ImageFormat::WebP,
-            Self::Bmp => ImageFormat::Bmp,
-            Self::Tiff => ImageFormat::Tiff,
-        }
-    }
-}
+/// Raster format the converter emits. Aliased to the workspace-level
+/// [`RasterFormat`] so the converter's output set and the rest of the
+/// pipeline's "decode + encode" set are the same list. Vector outputs are
+/// intentionally out of scope (the brief explicitly rejects "fake"
+/// raster→vector conversions like PNG → SVG tracing); WebP is **lossless
+/// only** (`image` 0.25's encoder).
+pub type TargetFormat = RasterFormat;
 
 /// How to handle alpha when the target format can't carry it (JPEG, BMP).
 /// No-op for alpha-supporting targets. Implementation in

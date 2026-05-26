@@ -183,7 +183,7 @@ fn process_one(source: &Path, opts: &Opts) -> AppResult<(PathBuf, Vec<String>)> 
 /// caller's problem via `unique_path`.
 fn derive_output_path(source: &Path, target_format: TargetFormat) -> PathBuf {
     let mut out = source.to_path_buf();
-    out.set_extension(target_format.extension());
+    out.set_extension(target_format.default_extension());
     out
 }
 
