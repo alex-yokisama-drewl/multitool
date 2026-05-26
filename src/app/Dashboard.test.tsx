@@ -41,6 +41,10 @@ describe("Dashboard", () => {
     expect(
       within(audioSection).getByRole("link", { name: /trimmer/i }),
     ).toBeInTheDocument();
+    // Video section also carries the Audio Extractor.
+    expect(
+      within(videoSection).getByRole("link", { name: /audio extractor/i }),
+    ).toBeInTheDocument();
   });
 
   it("groups tiles into category sections in registry order", () => {
@@ -84,11 +88,14 @@ describe("Dashboard", () => {
     ).toBeInTheDocument();
     // Two tiles under Audio now (Format Converter + Trimmer).
     expect(within(audioSection).getAllByRole("link")).toHaveLength(2);
-    // Video section starts with just the Format Converter.
+    // Video section carries the Format Converter + Audio Extractor.
     expect(
       within(videoSection).getByRole("link", { name: /format converter/i }),
     ).toBeInTheDocument();
-    expect(within(videoSection).getAllByRole("link")).toHaveLength(1);
+    expect(
+      within(videoSection).getByRole("link", { name: /audio extractor/i }),
+    ).toBeInTheDocument();
+    expect(within(videoSection).getAllByRole("link")).toHaveLength(2);
 
     // PDF / Image / Audio / Video sections render in toolCategories order.
     const headings = screen.getAllByRole("heading", { level: 2 });
@@ -130,6 +137,9 @@ describe("Dashboard", () => {
     const videoFormat = within(videoSection).getByRole("link", {
       name: /format converter/i,
     });
+    const audioExtractor = within(videoSection).getByRole("link", {
+      name: /audio extractor/i,
+    });
 
     expect(pdfToImages.getAttribute("data-tile-color")).toBe("rose");
     expect(imagesToPdf.getAttribute("data-tile-color")).toBe("amber");
@@ -137,6 +147,7 @@ describe("Dashboard", () => {
     expect(audioFormat.getAttribute("data-tile-color")).toBe("emerald");
     expect(audioTrimmer.getAttribute("data-tile-color")).toBe("violet");
     expect(videoFormat.getAttribute("data-tile-color")).toBe("teal");
+    expect(audioExtractor.getAttribute("data-tile-color")).toBe("amber");
 
     // Inline style binds the CSS var so the palette in globals.css is the
     // single source of truth for the actual color value.
@@ -144,5 +155,6 @@ describe("Dashboard", () => {
     expect(audioFormat.style.backgroundColor).toBe("var(--tile-emerald)");
     expect(audioTrimmer.style.backgroundColor).toBe("var(--tile-violet)");
     expect(videoFormat.style.backgroundColor).toBe("var(--tile-teal)");
+    expect(audioExtractor.style.backgroundColor).toBe("var(--tile-amber)");
   });
 });
