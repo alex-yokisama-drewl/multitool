@@ -58,6 +58,12 @@ export function pickVideoFiles(): Promise<string[] | null> {
   return Promise.resolve(MOCK_VIDEO_PATHS);
 }
 
+// Audio Extractor's single-select picker. Returns the first mock video
+// so the extractor's `picked` view has something to render.
+export function pickVideoFile(): Promise<string | null> {
+  return Promise.resolve(MOCK_VIDEO_PATHS[0] ?? null);
+}
+
 export function imageAssetUrl(path: string): string {
   // No Tauri asset protocol in a plain browser — return a harmless URL
   // so `<img>` rendering doesn't blow up. The spec doesn't assert on
