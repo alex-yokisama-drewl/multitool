@@ -104,18 +104,33 @@ describe("AudioTrimmer", () => {
     expect(screen.getByLabelText(/^end$/i)).toHaveValue("00:10.000");
   });
 
-  it("disables Trim when end <= start and shows a range-invalid alert", async () => {
+  it("silently clamps end >= start + 1 ms (no error alert, Trim stays enabled)", async () => {
     renderTool();
     await pickAndLoad();
-    // Type an end that's earlier than start.
+    // Try to push End to the same value as Start (or below). The clamp
+    // should silently bump End back to startMs + 1.
     fireEvent.change(screen.getByLabelText(/^end$/i), {
       target: { value: "00:00.000" },
     });
     fireEvent.blur(screen.getByLabelText(/^end$/i));
-    expect(screen.getByRole("button", { name: /^trim$/i })).toBeDisabled();
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      /end must be after start/i,
-    );
+    // No alert about the range — the silent clamp pins End at 1 ms.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/^end$/i)).toHaveValue("00:00.001");
+    // Trim stays enabled.
+    expect(screen.getByRole("button", { name: /^trim$/i })).not.toBeDisabled();
+  });
+
+  it("silently clamps start <= end - 1 ms when start is pushed past end", async () => {
+    renderTool();
+    await pickAndLoad();
+    // Push start way above end (10_000 ms).
+    fireEvent.change(screen.getByLabelText(/^start$/i), {
+      target: { value: "00:30" },
+    });
+    fireEvent.blur(screen.getByLabelText(/^start$/i));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    // Start is clamped to endMs - 1 = 9_999 ms.
+    expect(screen.getByLabelText(/^start$/i)).toHaveValue("00:09.999");
   });
 
   it("re-formats numeric input on blur and rejects malformed values", async () => {
@@ -133,10 +148,10 @@ describe("AudioTrimmer", () => {
     fireEvent.blur(start);
     expect(start).toHaveValue("00:02.000");
 
-    // Above max (10s here): clamps to the duration.
+    // Above max: clamps via the silent end-1 ms rule (endMs=10_000 → max 9_999).
     fireEvent.change(start, { target: { value: "01:30" } });
     fireEvent.blur(start);
-    expect(start).toHaveValue("00:10.000");
+    expect(start).toHaveValue("00:09.999");
   });
 
   it("forwards path + opts including fade presets when Trim is clicked", async () => {
@@ -213,10 +228,10 @@ describe("AudioTrimmer", () => {
     expect(screen.getByRole("button", { name: /^trim$/i })).toBeInTheDocument();
   });
 
-  it("Preview toggle creates and stops the preview player", async () => {
+  it("Play toggle creates and stops the preview player", async () => {
     renderTool();
     await pickAndLoad();
-    fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^play$/i }));
     expect(createPreviewPlayerMock).toHaveBeenCalledTimes(1);
     const [, , opts] = createPreviewPlayerMock.mock.calls[0] as [
       unknown,
@@ -229,15 +244,35 @@ describe("AudioTrimmer", () => {
       fadeInMs: 0,
       fadeOutMs: 0,
     });
-    // Button now reads "Stop".
+    // Button now reads "Stop" (icon-only, exposed via aria-label).
     expect(screen.getByRole("button", { name: /^stop$/i })).toBeInTheDocument();
 
     // Toggle off.
     fireEvent.click(screen.getByRole("button", { name: /^stop$/i }));
     expect(previewStopMock).toHaveBeenCalled();
-    expect(
-      screen.getByRole("button", { name: /^preview$/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^play$/i })).toBeInTheDocument();
+  });
+
+  it("changing start/end/fade while preview is playing stops the preview", async () => {
+    renderTool();
+    await pickAndLoad();
+    fireEvent.click(screen.getByRole("button", { name: /^play$/i }));
+    expect(screen.getByRole("button", { name: /^stop$/i })).toBeInTheDocument();
+
+    // Editing Start stops the preview.
+    fireEvent.change(screen.getByLabelText(/^start$/i), {
+      target: { value: "00:01.000" },
+    });
+    fireEvent.blur(screen.getByLabelText(/^start$/i));
+    expect(previewStopMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: /^play$/i })).toBeInTheDocument();
+
+    // Play again → toggling a fade checkbox stops it.
+    fireEvent.click(screen.getByRole("button", { name: /^play$/i }));
+    expect(screen.getByRole("button", { name: /^stop$/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText(/fade in/i));
+    expect(previewStopMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("button", { name: /^play$/i })).toBeInTheDocument();
   });
 
   it("surfaces a load failure as an idle-state error", async () => {

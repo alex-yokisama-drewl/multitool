@@ -101,12 +101,12 @@ export function Waveform({
       const px = event.clientX - rect.left;
       const ms = pxToMs(px);
       if (drag === "start") {
-        // Pin start <= end. Clamp to one ms before end to keep the
-        // range nominally non-empty; the parent's `endMs <= startMs`
-        // check still catches it for the Trim button disable.
-        onChange(Math.min(ms, endMs), endMs);
+        // Pin start <= end-1 so the handles never converge (parent
+        // enforces the same silent minimum-duration invariant; doing
+        // it here too keeps the visual feedback accurate during drag).
+        onChange(Math.min(ms, endMs - 1), endMs);
       } else {
-        onChange(startMs, Math.max(ms, startMs));
+        onChange(startMs, Math.max(ms, startMs + 1));
       }
     };
     const onUp = () => {
