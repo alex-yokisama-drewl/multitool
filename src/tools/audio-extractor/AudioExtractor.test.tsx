@@ -81,10 +81,7 @@ describe("AudioExtractor", () => {
 
     let resolveJob: ((result: JobResult) => void) | undefined;
     extractMock.mockImplementation(
-      (
-        _path: string,
-        hooks: { onProgress?: (p: Progress) => void },
-      ) => {
+      (_path: string, hooks: { onProgress?: (p: Progress) => void }) => {
         hooks.onProgress?.({ kind: "started", index: 0, total: 1 });
         hooks.onProgress?.({
           kind: "file-progress",
@@ -119,10 +116,7 @@ describe("AudioExtractor", () => {
 
     let resolveJob: ((result: JobResult) => void) | undefined;
     extractMock.mockImplementation(
-      (
-        _path: string,
-        hooks: { onProgress?: (p: Progress) => void },
-      ) => {
+      (_path: string, hooks: { onProgress?: (p: Progress) => void }) => {
         hooks.onProgress?.({ kind: "started", index: 1, total: 3 });
         return new Promise<JobResult>((resolve) => {
           resolveJob = resolve;

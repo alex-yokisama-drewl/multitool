@@ -94,9 +94,8 @@ export function AudioExtractor() {
         <h1 className="text-xl font-semibold">Audio Extractor</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Extract every audio track from a video file as MP3 (~190 kbps VBR).
-          Output lands next to the source as{" "}
-          <code>&lt;name&gt;_audio.mp3</code>, or{" "}
-          <code>&lt;name&gt;_audio_1.mp3</code>, … for multi-track sources.
+          Output lands next to the source as <code>&lt;name&gt;_audio.mp3</code>
+          , or <code>&lt;name&gt;_audio_1.mp3</code>, … for multi-track sources.
         </p>
       </header>
 
@@ -142,7 +141,8 @@ export function AudioExtractor() {
               <span className="font-medium">{fileName(state.path)}</span>
               {state.current && state.current.total > 1 && (
                 <>
-                  {" "}— Track {state.current.index + 1} of {state.current.total}
+                  {" "}
+                  — Track {state.current.index + 1} of {state.current.total}
                 </>
               )}
             </div>
