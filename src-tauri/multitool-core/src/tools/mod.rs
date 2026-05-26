@@ -12,6 +12,7 @@
 pub mod audio_extractor;
 pub mod audio_format_converter;
 pub mod audio_trimmer;
+pub mod image_crop;
 pub mod image_format_converter;
 pub mod images_to_pdf;
 pub mod pdf_to_images;
