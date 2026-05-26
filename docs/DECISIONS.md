@@ -6,6 +6,24 @@ Choices, caveats, and recipes that affect future work — patterns we must keep 
 
 ---
 
+## Video stack: bundled ffmpeg sidecar (eugeneware GPL build), baked codec recipes
+
+The Video Format Converter (commits `601b48c…c27b34c`) is the first video tool. Decisions worth keeping:
+
+- **Sidecar, not in-process bindings.** ffmpeg ships as a subprocess via [`multitool_core::ffmpeg::run`](../src-tauri/multitool-core/src/ffmpeg.rs), not via `ffmpeg-next` libav bindings. Sidecar adds ~50–80 MB to the installed bundle per OS-arch (acceptable for a learning project) but keeps the CI surface trivial — no system libav headers, no per-OS dev-deps. `ffmpeg-next` would have required `apt-get install libav*-dev` / `brew install ffmpeg` / `cargo vcpkg build` on every builder, same trap as HEIC (see [plans/BACKLOG.md](plans/BACKLOG.md)). Spawn/progress drainage/stderr capture all go through `Command::spawn` + `BufRead` on a dedicated thread; Windows needs `CREATE_NO_WINDOW = 0x0800_0000` to avoid a cmd.exe flash on every spawn.
+- **eugeneware/ffmpeg-static at `b6.1.1` for the binary.** Single source covers all five target platforms (linux x64/arm64, darwin x64/arm64, win x64) with bare-binary downloads — no .tar.xz/.zip/.7z extraction logic. Rejected: BtbN/FFmpeg-Builds (no macOS at all; evermeet.cx has no darwin-arm64, so we'd have needed three sources) and BtbN's static binaries at ~160 MB vs eugeneware's leaner ~50–80 MB. The `b6.1.1` tag on Linux actually ships ffmpeg 7.0.2 binaries — johnvansickle's static build re-distributed; the tag is a re-distribution marker, not the ffmpeg version. **If the pin moves, update both build scripts together** (same rule as pdfium).
+- **No `ffprobe` bundled — parse `ffmpeg -i` stderr for duration.** Saves another ~50–80 MB per installed bundle. The `Duration: HH:MM:SS.cc` line format has been stable in ffmpeg for over a decade; parser lives in `ffmpeg::probe_duration_secs`.
+- **Baked codec recipes**, no per-format quality knobs in v1. Matches the "format dropdown only" ethos of the audio + image converters:
+  - **mp4**: H.264 (libx264) CRF 23 `-preset medium` + AAC 128k, `-vf scale=trunc(iw/2)*2:trunc(ih/2)*2`, `-pix_fmt yuv420p`.
+  - **webm**: VP9 (libvpx-vp9) CRF 32 `-b:v 0` (constant-quality) `-row-mt 1` + Opus 96k, same scale filter.
+  - **mkv**: stream copy, no re-encode.
+- **`-vf scale=trunc(iw/2)*2:trunc(ih/2)*2` is load-bearing.** Both libx264 (in 4:2:0) and libvpx-vp9 reject odd source dimensions on most configurations with "height not divisible by 2" (real failure observed on a 1062×1043 source). The scale filter rounds down at most 1 px per axis — the standard fix. Don't drop it.
+- **GPL licensing accepted for the bundle.** eugeneware's binary is a GPL ffmpeg build (libx264 is GPL). Fine for a learning-project capped at 0.x. **Don't propose a publishing pipeline that pretends the bundle is LGPL** — switching to LGPL would drop H.264 encode entirely, which kills mp4 output.
+
+Cancellation: between files via `cancel.is_cancelled()` check at the top of each iteration; mid-encode via `child.kill()` from inside [`ffmpeg::run`](../src-tauri/multitool-core/src/ffmpeg.rs). On any error (cancel or non-zero exit) the in-flight partial output file is unlinked — half-written mp4/webm files are useless. Already-written outputs from prior files stay on disk.
+
+---
+
 ## Audio Trimmer: source-format-preserving, browser-side preview, shared `audio_codecs` module
 
 The Audio Trimmer (commits `2cab704…cc136e6`) is the second audio tool and the trigger for hoisting decode + encode out of the converter:
