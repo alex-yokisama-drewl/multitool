@@ -51,18 +51,41 @@ impl TargetFormat {
     /// Rationale per pick:
     /// - **mp4**: H.264 CRF 23 is the x264-documented "visually
     ///   lossless-ish" sweet spot; AAC 128k is the lossy default the rest
-    ///   of the audio world uses.
+    ///   of the audio world uses. `-vf scale=trunc(iw/2)*2:trunc(ih/2)*2`
+    ///   guarantees even dimensions (H.264 in 4:2:0 requires it; an odd
+    ///   source dimension fails the encode with "height not divisible by
+    ///   2"). `-pix_fmt yuv420p` forces 4:2:0 chroma for universal
+    ///   playback — without it, an input in yuv444p or 10-bit would
+    ///   produce an mp4 that some players refuse.
     /// - **webm**: VP9 wants `-b:v 0` to enter constant-quality mode
     ///   (otherwise it caps bitrate); `-row-mt 1` enables row-based
-    ///   multithreading for ~2× speedup on multi-core hosts.
+    ///   multithreading for ~2× speedup on multi-core hosts. Same
+    ///   even-dimension scale filter — libvpx-vp9 also rejects odd
+    ///   dimensions on most input configurations.
     /// - **mkv**: stream copy. Real re-encoding into mkv is the
-    ///   Video Compress tool's story, not this one.
+    ///   Video Compress tool's story, not this one. No scale filter
+    ///   because nothing is being re-encoded.
     fn codec_args(self) -> &'static [&'static str] {
         match self {
             Self::Mp4 => &[
-                "-c:v", "libx264", "-preset", "medium", "-crf", "23", "-c:a", "aac", "-b:a", "128k",
+                "-vf",
+                "scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "medium",
+                "-crf",
+                "23",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "128k",
             ],
             Self::Webm => &[
+                "-vf",
+                "scale=trunc(iw/2)*2:trunc(ih/2)*2",
                 "-c:v",
                 "libvpx-vp9",
                 "-crf",
@@ -159,15 +182,16 @@ where
     }
 }
 
-/// `{stem}_converted.{ext}` next to the source. The `_converted` suffix
-/// ensures the output is distinct from the input even when the user
-/// "converts" to the same format the source is already in.
+/// `{stem}.{ext}` next to the source. Same-format conversions (e.g.
+/// mp4 → mp4 in place) collide with the source and route through
+/// [`unique_path`] to land as `{stem} (1).{ext}` — same disambiguation
+/// the other converters use, no per-tool suffix.
 pub(super) fn derive_output_path(source: &Path, target: TargetFormat) -> PathBuf {
     let stem = source
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("output");
-    let name = format!("{stem}_converted.{ext}", ext = target.extension());
+    let name = format!("{stem}.{ext}", ext = target.extension());
     source.with_file_name(name)
 }
 
@@ -198,33 +222,33 @@ mod tests {
     }
 
     #[test]
-    fn output_path_adds_converted_suffix_next_to_source() {
+    fn output_path_uses_target_extension_next_to_source() {
         let src = PathBuf::from("/videos/holiday.mov");
         let out = derive_output_path(&src, TargetFormat::Mp4);
-        assert_eq!(out, PathBuf::from("/videos/holiday_converted.mp4"));
+        assert_eq!(out, PathBuf::from("/videos/holiday.mp4"));
     }
 
     #[test]
-    fn output_path_same_format_still_uses_converted_suffix() {
-        // Converting mp4 → mp4 still gets the suffix — that's how we
-        // guarantee the output is distinct from the input even before
-        // unique_path resolution.
+    fn output_path_same_format_collides_with_source() {
+        // mp4 → mp4 lands at the same path as the source. The orchestrator
+        // routes through unique_path so the actual write becomes
+        // `clip (1).mp4`. derive_output_path is the pre-collision name.
         let src = PathBuf::from("/videos/clip.mp4");
         let out = derive_output_path(&src, TargetFormat::Mp4);
-        assert_eq!(out, PathBuf::from("/videos/clip_converted.mp4"));
+        assert_eq!(out, src);
     }
 
     #[test]
     fn output_path_handles_multi_dot_stem() {
         // file_stem keeps everything before the LAST dot, so we get
-        // "report.final" + "_converted.mp4".
+        // "report.final" + ".mp4".
         let src = PathBuf::from("/videos/report.final.mov");
         let out = derive_output_path(&src, TargetFormat::Mp4);
-        assert_eq!(out, PathBuf::from("/videos/report.final_converted.mp4"));
+        assert_eq!(out, PathBuf::from("/videos/report.final.mp4"));
     }
 
     #[test]
-    fn mp4_args_carry_libx264_and_aac_with_crf_and_preset() {
+    fn mp4_args_carry_libx264_aac_and_even_dim_scale_filter() {
         let args = build_args(
             Path::new("/in.mov"),
             Path::new("/out.mp4"),
@@ -239,11 +263,18 @@ mod tests {
         assert!(joined.contains(&"23"));
         assert!(joined.contains(&"aac"));
         assert!(joined.contains(&"128k"));
+        // Even-dimension scale filter — required for H.264 4:2:0 (odd
+        // height/width fails the encode with "not divisible by 2").
+        let vf_idx = joined.iter().position(|&s| s == "-vf").unwrap();
+        assert_eq!(joined[vf_idx + 1], "scale=trunc(iw/2)*2:trunc(ih/2)*2");
+        // Explicit 4:2:0 chroma so the output plays in every player.
+        let pf_idx = joined.iter().position(|&s| s == "-pix_fmt").unwrap();
+        assert_eq!(joined[pf_idx + 1], "yuv420p");
         assert_eq!(joined.last().copied(), Some("/out.mp4"));
     }
 
     #[test]
-    fn webm_args_carry_vp9_with_constant_quality_and_opus() {
+    fn webm_args_carry_vp9_with_constant_quality_opus_and_even_dim_scale() {
         let args = build_args(
             Path::new("/in.mov"),
             Path::new("/out.webm"),
@@ -259,6 +290,10 @@ mod tests {
         assert!(joined.contains(&"-row-mt"));
         assert!(joined.contains(&"libopus"));
         assert!(joined.contains(&"96k"));
+        // Same even-dimension scale filter as mp4 — libvpx-vp9 also
+        // rejects odd dimensions on most configurations.
+        let vf_idx = joined.iter().position(|&s| s == "-vf").unwrap();
+        assert_eq!(joined[vf_idx + 1], "scale=trunc(iw/2)*2:trunc(ih/2)*2");
     }
 
     #[test]

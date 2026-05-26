@@ -6,6 +6,7 @@ Plans and ideas not yet committed to a milestone. When an item moves into active
 
 - **Drag-and-drop input on dashboard/tools.** Drop one or more files anywhere on the dashboard or a tool screen to start a flow. Was a stretch goal for 0.2.0; still unshipped.
 - **Paste-from-clipboard for image inputs.** Any tool that accepts images should allow pasting (Ctrl/Cmd+V) directly — screenshots in particular. Likely a shared input affordance rather than per-tool.
+- **Video thumbnails in the staging area.** Show a first-frame thumbnail next to each picked video so the user can confirm the file before converting. Two viable paths: (a) `<video src={convertFileSrc(path)}>` with asset-protocol scope extended for picked video paths — fast to build but only renders codecs the WebView decodes natively (mp4/webm yes, mkv/avi no — would need a placeholder); (b) a new `extract_thumbnail` Tauri command that runs ffmpeg to grab a JPEG of the first frame and returns bytes via IPC — works for every codec ffmpeg can read, more plumbing. Deferred from the Video Format Converter v1 build.
 
 ## Future tools
 
