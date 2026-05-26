@@ -6,6 +6,17 @@ Choices, caveats, and recipes that affect future work — patterns we must keep 
 
 ---
 
+## Audio Extractor: per-track ffmpeg call, asymmetric `_audio[_N]` naming
+
+The Audio Extractor (commits `15961cd…e0e8ad2`) takes a single video in and writes one MP3 per audio track. Two decisions worth pinning so they don't get "optimized" later:
+
+- **One ffmpeg call per track**, not a single call with N `-map ... outN.mp3` outputs. ffmpeg's multi-output form decodes the source once and writes every track in a single run — measurably faster on large sources. Rejected because: it reuses the existing single-output `convert` shape unchanged, mid-track progress is just `out_time_us / duration` instead of demuxing a multi-output progress stream, and between-track cancellation is a top-of-loop `is_cancelled()` check instead of mid-child surgery on a child still owed N output files. The decode-N-times cost is negligible for an offline tool that runs occasionally. If "extract 8 tracks from a 4-hour rip" ever shows up as a real wait, the refactor is self-contained inside `audio_extractor`.
+- **Asymmetric naming: `<stem>_audio.mp3` for single-track, `<stem>_audio_<1-based>.mp3` for multi-track.** Single-track sources are the 95% case and `_audio_1.mp3` reads as noise when there's only one track. The 1-based index in filenames intentionally diverges from the 0-based ffmpeg `-map 0:a:<i>` selector — users count from 1, ffmpeg counts from 0; the boundary is in `derive_output_path`.
+- **`probe_audio_stream_count` parses `ffmpeg -i` stderr.** Same trick as `probe_duration_secs` and same reason — no ffprobe bundled. Anchors on two substrings on the same line (`Stream #` prefix + `: Audio:` marker) so banner prose mentioning "Audio" doesn't get counted.
+- **MP3 V2 VBR (~190 kbps) via `libmp3lame -q:a 2`.** Matches the "baked recipe, no UI knob" ethos of the other converters. V2 over CBR for quality-per-byte; V2 over V0 (~245k) for smaller files. The `mp3lame-encoder` crate is **not** used here even though we have it — going through ffmpeg keeps the pipeline single-tool (decode any video container ffmpeg knows + encode in one process); the upstream codec is the same libmp3lame either way.
+
+---
+
 ## Video stack: bundled ffmpeg sidecar (eugeneware GPL build), baked codec recipes
 
 The Video Format Converter (commits `601b48c…c27b34c`) is the first video tool. Decisions worth keeping:

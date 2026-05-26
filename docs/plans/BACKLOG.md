@@ -30,7 +30,6 @@ Plans and ideas not yet committed to a milestone. When an item moves into active
 
 - **Video compress.**
 - **Video trim.**
-- **Extract audio from video.**
 
 ### Text
 
