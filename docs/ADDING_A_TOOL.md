@@ -81,7 +81,7 @@ System-level wrappers (file picker, reveal-in-folder) live in [`src/lib/system.t
 - Update [../src/app/Dashboard.test.tsx](../src/app/Dashboard.test.tsx) to assert the new tile (the test belongs to the registry contract).
 - That should be the only edits to shared frontend files.
 
-### 7. Add tests
+### 7. Add code-validating tests
 
 | Layer | Runner | What to cover |
 | --- | --- | --- |
@@ -89,11 +89,26 @@ System-level wrappers (file picker, reveal-in-folder) live in [`src/lib/system.t
 | Rust orchestrator (`job.rs`) | `cargo test -p multitool-core` | Happy path, cancellation, missing input, typed errors, `unique_path` collision. |
 | TS IPC wrapper | Vitest, `@tauri-apps/api/{core,event}` mocked via `vi.hoisted` | Invokes the right command, progress filtered by JobId, listener unsubscribed on both success + error, AbortSignal abort → `cancel_job`, error envelope round-trip. |
 | React component | Vitest + Testing Library, `@/lib/*` mocked | Defaults render, options forwarded, progress text renders, error envelope renders, Cancel aborts the signal. |
-| E2E happy path | Playwright against `pnpm dev` | One smoke: dashboard → tile → form → success. Failure paths stay at the unit level. |
+
+### 8. Stop. Ask the user for a manual smoke session.
+
+**Before you write the Playwright spec, pause and ask the user to smoke-test the tool in `pnpm tauri dev`.** Unit + component tests verify code paths — only a real session in the actual app verifies the *feature*: that the OS picker lands the right path, progress events render legibly under real timing, "Open output folder" reveals what it should, mid-job cancel leaves no junk on disk, and real-codec / real-file-shape quirks the unit fixtures can't synthesize behave sensibly. **Catching a bug at the e2e-spec stage encodes the bug into a passing test future-you will trust** — so the bug becomes permanent. Catching it via the manual session means the next commit fixes the actual behaviour, and the e2e spec written afterwards locks in the correct shape.
+
+When you ask, list the specific scenarios worth eyeballing — don't punt with "give it a try". A useful ask sounds like:
+- Golden happy path, end-to-end.
+- One or two edge cases the unit fixtures can't reach — real-codec quirks for media tools, mid-job cancel + partial cleanup, error envelopes for a deliberately-broken input.
+- Cancel during a long-running operation if the tool has one.
+- Anything that depends on platform-native behaviour (file pickers, reveal-in-folder, drag-and-drop).
+
+Only proceed to step 9 once the user confirms the manual session is done. If the smoke surfaces a bug, fix it in a new commit *before* writing the e2e spec — the e2e is for locking in known-good behaviour, not for catching regressions in code the user hasn't yet validated.
+
+### 9. Add the E2E happy-path Playwright spec
+
+One spec at `tests/e2e/<tool>.spec.ts` covering the golden flow only: dashboard → tile → form/picker → success state visible. Failure paths stay at the unit level — the spec exists to prove the happy path is wired all the way through, not to re-validate logic the unit + component tests already cover.
 
 E2E mocking: the wrappers under `src/lib/` get swapped for `tests/e2e/mocks/*.ts` via a Vite alias gated on `VITE_E2E=true` (set on `playwright.config.ts → webServer.env`; alias logic in [`vite.config.ts`](../vite.config.ts)). New tools that need different e2e mocks add a sibling file under `tests/e2e/mocks/` and extend the alias map. Mocks are typed against the real wrapper signatures so drift surfaces as a tsc error.
 
-### 8. Run the pre-PR checklist
+### 10. Run the pre-PR checklist
 
 See [../CLAUDE.md → Per-PR checklist](../CLAUDE.md). Short version: fmt → clippy (workspace) → `cargo test -p multitool-core --all-targets` → pnpm lint/typecheck/test → `pnpm tauri build --no-bundle` → `pnpm test:e2e`. CI is the cross-OS truth: linux-local gates can pass while Windows/macOS regress on native-dep code, so any "path-shaped" commit (new native deps, build scripts, FS code) deserves a CI sweep before stacking more work on top.
 
