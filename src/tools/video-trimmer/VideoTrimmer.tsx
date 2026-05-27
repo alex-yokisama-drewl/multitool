@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Pause, Play } from "lucide-react";
+import { Pause, Play, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { TimeInput } from "@/components/TimeInput";
@@ -65,6 +65,7 @@ export function VideoTrimmer() {
   const [endMs, setEndMs] = useState(0);
   const [currentMs, setCurrentMs] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [volume, setVolume] = useState(1);
 
   const abortRef = useRef<AbortController | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -169,21 +170,31 @@ export function VideoTrimmer() {
   const upperBound = (): number =>
     state.kind === "picked" ? state.durationMs : Number.POSITIVE_INFINITY;
 
-  const seek = (ms: number) => {
+  // Seek the player to `ms` (and reflect it in the playhead). Does not
+  // pause — used by both the seek slider and the marker drag.
+  const seekTo = (ms: number) => {
     const video = videoRef.current;
-    if (video) video.currentTime = ms / 1000;
-    setCurrentMs(ms);
+    const clamped = Math.max(0, ms);
+    if (video) video.currentTime = clamped / 1000;
+    setCurrentMs(clamped);
   };
 
+  // Moving a marker stops + reset-seeks the preview so the user sees the
+  // frame at the new edge instead of whatever was mid-play.
   const onStartChange = (ms: number) => {
     stopPlayback();
-    setStartMs(Math.max(0, Math.min(ms, endMs - 1, upperBound() - 1)));
+    const next = Math.max(0, Math.min(ms, endMs - 1, upperBound() - 1));
+    setStartMs(next);
+    seekTo(next);
   };
   const onEndChange = (ms: number) => {
     stopPlayback();
-    setEndMs(Math.min(upperBound(), Math.max(ms, startMs + 1)));
+    const next = Math.min(upperBound(), Math.max(ms, startMs + 1));
+    setEndMs(next);
+    seekTo(next);
   };
   const onRangeChange = (s: number, e: number) => {
+    stopPlayback();
     const upper = upperBound();
     const newStart = Math.max(0, Math.min(s, upper - 1));
     const newEnd = Math.min(upper, Math.max(e, newStart + 1));
@@ -191,35 +202,22 @@ export function VideoTrimmer() {
     setEndMs(newEnd);
   };
 
-  // Play only the selected window: seek to start, play, and pause once the
-  // playhead reaches the end marker.
   const togglePlay = () => {
     const video = videoRef.current;
     if (!video) return;
-    if (playing) {
-      video.pause();
-      setPlaying(false);
-      return;
-    }
-    if (
-      video.currentTime * 1000 < startMs ||
-      video.currentTime * 1000 >= endMs
-    ) {
-      video.currentTime = startMs / 1000;
-    }
-    void video.play();
-    setPlaying(true);
+    if (video.paused) void video.play();
+    else video.pause();
   };
 
   const onTimeUpdate = () => {
     const video = videoRef.current;
-    if (!video) return;
-    const ms = video.currentTime * 1000;
-    setCurrentMs(ms);
-    if (playing && ms >= endMs) {
-      video.pause();
-      setPlaying(false);
-    }
+    if (video) setCurrentMs(video.currentTime * 1000);
+  };
+
+  const onVolumeChange = (pct: number) => {
+    const vol = Math.max(0, Math.min(1, pct / 100));
+    if (videoRef.current) videoRef.current.volume = vol;
+    setVolume(vol);
   };
 
   const trim = async () => {
@@ -334,22 +332,69 @@ export function VideoTrimmer() {
             </div>
           </div>
 
+          {/* No native `controls`: WebView control sets are inconsistent
+              (fullscreen / playback-speed / download leak through), so we
+              render a minimal bar with exactly what a trim preview needs. */}
           <video
             ref={videoRef}
             src={state.previewUrl}
-            controls
+            playsInline
+            preload="auto"
             onTimeUpdate={onTimeUpdate}
-            onEnded={() => setPlaying(false)}
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+            onLoadedMetadata={() => {
+              if (videoRef.current) videoRef.current.volume = volume;
+            }}
             className="w-full rounded-md border border-border bg-black"
           />
 
+          {/* Playback bar: play/pause + seek-anywhere + volume. */}
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={togglePlay}
+              aria-label={playing ? "Pause" : "Play"}
+            >
+              {playing ? <Pause /> : <Play />}
+            </Button>
+            <span className="whitespace-nowrap font-mono text-xs tabular-nums text-muted-foreground">
+              {formatMs(currentMs)} / {formatMs(state.durationMs)}
+            </span>
+            <input
+              type="range"
+              aria-label="Seek"
+              min={0}
+              max={Math.max(1, state.durationMs)}
+              value={Math.round(Math.min(currentMs, state.durationMs))}
+              onChange={(e) => seekTo(Number(e.target.value))}
+              className="flex-1 accent-primary"
+            />
+            <Volume2
+              className="size-4 shrink-0 text-muted-foreground"
+              aria-hidden
+            />
+            <input
+              type="range"
+              aria-label="Volume"
+              min={0}
+              max={100}
+              value={Math.round(volume * 100)}
+              onChange={(e) => onVolumeChange(Number(e.target.value))}
+              className="w-20 accent-primary"
+            />
+          </div>
+
+          {/* Trim window: draggable start/end markers (drag seeks the
+              player so the edge frame is visible). */}
           <VideoScrubber
             durationMs={state.durationMs}
             startMs={startMs}
             endMs={endMs}
             currentMs={currentMs}
             onChange={onRangeChange}
-            onSeek={seek}
+            onSeek={seekTo}
           />
 
           <div className="flex items-end justify-between gap-4">
@@ -360,14 +405,6 @@ export function VideoTrimmer() {
               max={state.durationMs}
               onChange={onStartChange}
             />
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={togglePlay}
-              aria-label={playing ? "Pause" : "Play selection"}
-            >
-              {playing ? <Pause /> : <Play />}
-            </Button>
             <TimeInput
               id="trim-end"
               label="End"

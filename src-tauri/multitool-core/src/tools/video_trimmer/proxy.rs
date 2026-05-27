@@ -1,17 +1,22 @@
 //! Preview-proxy transcode for the Video Trimmer.
 //!
 //! The trimmer's player must show frames for *any* source, but the WebView
-//! only decodes a handful of codecs natively (h264/vp8/vp9/av1 in
-//! mp4/webm). When native playback fails, the UI asks for a **proxy**: a
-//! throwaway, web-friendly mp4 transcoded from the source and played in
-//! place of it. The trim itself always runs against the *original* file
-//! (see [`super::convert`]) — the proxy is preview-only and is deleted
-//! once the user moves on.
+//! can't always decode the source natively. When native playback fails,
+//! the UI asks for a **proxy**: a throwaway, web-friendly clip transcoded
+//! from the source and played in place of it. The trim itself always runs
+//! against the *original* file (see [`super::convert`]) — the proxy is
+//! preview-only and is deleted once the user moves on.
 //!
-//! The recipe favors speed + small size over fidelity (it's discarded):
-//! `libx264 -preset ultrafast -crf 28`, downscaled to ≤1280px wide, AAC
-//! audio, `+faststart` so the asset-protocol stream is progressively
-//! playable.
+//! **Why WebM/VP9/Opus, not mp4/H.264:** the Linux WebView (WebKitGTK)
+//! decodes H.264/AAC only when proprietary gstreamer plugins
+//! (`gst-libav` / `gst-plugins-bad`) are installed, which they often
+//! aren't — so an H.264 proxy fails to play exactly where we need the
+//! fallback most. VP9 + Opus in WebM are the open codecs WebKitGTK ships
+//! with out of the box (and every other target WebView decodes them too).
+//!
+//! The recipe favors speed over fidelity (it's discarded): VP9 in
+//! `-deadline realtime -cpu-used 8` mode, constant-quality `-crf 32`,
+//! downscaled to ≤1280px wide, Opus audio.
 
 use std::ffi::OsString;
 use std::path::Path;
@@ -78,14 +83,14 @@ where
     }
 }
 
-/// Build the ffmpeg arg vec for a preview proxy. `-crf 28` + `ultrafast`
-/// trade fidelity for speed (throwaway output); the scale filter caps the
-/// width at 1280 without upscaling (`min(1280,iw)`, comma escaped so the
-/// filtergraph parser doesn't read it as a filter separator) and forces an
-/// even height (`-2`) for 4:2:0. `-pix_fmt yuv420p` guarantees a chroma
-/// layout every browser decodes; `+faststart` moves the moov atom to the
-/// front for progressive asset-protocol playback. `-y` overwrites any
-/// stale proxy at `dest`.
+/// Build the ffmpeg arg vec for a preview proxy. VP9 in `-deadline
+/// realtime -cpu-used 8` mode trades fidelity for encode speed (throwaway
+/// output); `-b:v 0 -crf 32` is VP9's constant-quality mode and `-row-mt 1`
+/// enables row multithreading. The scale filter caps the width at 1280
+/// without upscaling (`min(1280,iw)`, comma escaped so the filtergraph
+/// parser doesn't read it as a filter separator) and forces an even height
+/// (`-2`). `-pix_fmt yuv420p` is the chroma layout every WebView decodes.
+/// Opus audio. `-y` overwrites any stale proxy at `dest`.
 fn build_proxy_args(source: &Path, dest: &Path) -> Vec<OsString> {
     vec![
         "-y".into(),
@@ -96,17 +101,21 @@ fn build_proxy_args(source: &Path, dest: &Path) -> Vec<OsString> {
         "-pix_fmt".into(),
         "yuv420p".into(),
         "-c:v".into(),
-        "libx264".into(),
-        "-preset".into(),
-        "ultrafast".into(),
+        "libvpx-vp9".into(),
+        "-deadline".into(),
+        "realtime".into(),
+        "-cpu-used".into(),
+        "8".into(),
+        "-b:v".into(),
+        "0".into(),
         "-crf".into(),
-        "28".into(),
+        "32".into(),
+        "-row-mt".into(),
+        "1".into(),
         "-c:a".into(),
-        "aac".into(),
+        "libopus".into(),
         "-b:a".into(),
-        "128k".into(),
-        "-movflags".into(),
-        "+faststart".into(),
+        "96k".into(),
         dest.as_os_str().to_os_string(),
     ]
 }
@@ -118,24 +127,27 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn proxy_args_carry_web_friendly_recipe() {
-        let args = build_proxy_args(Path::new("/in.mkv"), Path::new("/out.mp4"));
+    fn proxy_args_carry_open_codec_recipe() {
+        let args = build_proxy_args(Path::new("/in.mkv"), Path::new("/out.webm"));
         let joined: Vec<&str> = args.iter().map(|a| a.to_str().unwrap()).collect();
         assert_eq!(joined[0], "-y");
         assert_eq!(joined[1], "-i");
         assert_eq!(joined[2], "/in.mkv");
-        assert!(joined.contains(&"libx264"));
-        assert!(joined.contains(&"ultrafast"));
-        assert!(joined.contains(&"28"));
-        assert!(joined.contains(&"aac"));
+        // Open codecs WebKitGTK decodes without proprietary plugins.
+        assert!(joined.contains(&"libvpx-vp9"));
+        assert!(joined.contains(&"libopus"));
+        assert!(!joined.contains(&"libx264"));
+        assert!(!joined.contains(&"aac"));
+        // Realtime, constant-quality VP9.
+        assert!(joined.contains(&"realtime"));
+        assert!(joined.contains(&"32"));
+        let bv_idx = joined.iter().position(|&s| s == "-b:v").unwrap();
+        assert_eq!(joined[bv_idx + 1], "0");
         assert!(joined.contains(&"yuv420p"));
         // Width cap with the comma escaped for the filtergraph parser.
         let vf_idx = joined.iter().position(|&s| s == "-vf").unwrap();
         assert_eq!(joined[vf_idx + 1], r"scale=min(1280\,iw):-2");
-        // faststart for progressive playback.
-        let mv_idx = joined.iter().position(|&s| s == "-movflags").unwrap();
-        assert_eq!(joined[mv_idx + 1], "+faststart");
-        assert_eq!(joined.last().copied(), Some("/out.mp4"));
+        assert_eq!(joined.last().copied(), Some("/out.webm"));
     }
 
     #[test]
@@ -171,7 +183,7 @@ mod tests {
         ];
         ffmpeg::run(synth, |_| {}, &CancellationToken::new()).expect("synth clip");
 
-        let proxy = dir.path().join("proxy.mp4");
+        let proxy = dir.path().join("proxy.webm");
         let saw_progress = std::cell::Cell::new(false);
         generate_proxy(
             &src,
@@ -196,7 +208,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let bad = dir.path().join("bad.mkv");
         std::fs::write(&bad, b"not a video").unwrap();
-        let proxy = dir.path().join("proxy.mp4");
+        let proxy = dir.path().join("proxy.webm");
 
         let result = generate_proxy(&bad, &proxy, |_| {}, &CancellationToken::new());
         assert!(matches!(result, Err(AppError::ProcessingFailed { .. })));
