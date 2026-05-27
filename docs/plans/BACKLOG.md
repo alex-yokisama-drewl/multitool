@@ -23,9 +23,9 @@ Plans and ideas not yet committed to a milestone. When an item moves into active
 ### Video
 
 - **Video compress.**
-- **Frame-accurate trim (re-encode).** The Video Trimmer ships keyframe-snapped stream-copy cuts (lossless, instant). A re-encode mode would give frame-accurate start points at the cost of speed + a quality generation; offer it as a toggle when "the cut is a few seconds off" becomes a real complaint.
+- **Frame-accurate trim (full re-encode).** The Video Trimmer ships keyframe-snapped stream-copy cuts (lossless, instant) — the start snaps back to the keyframe at or before the selected point, so the real cut can land up to one full GOP early (measured: ~1–5s for typical sources, up to ~8–10s for long-GOP encodes like OBS captures; the excess is extra leading footage, since the end is frame-accurate and the selected duration isn't preserved). The fix is a **full re-encode** (decode → cut at the exact frame → re-encode): frame-accurate seeking is free once you're re-encoding, no smart-cut splice needed. This is **always on, not a setting** — accuracy beats speed here. The re-encode should aim to mirror the source's params (codec / bitrate / pixfmt) to minimize the quality generation. Shares the re-encode backend with **Video compress** via a helper in `multitool-core` (a shared core module both tools call — not one tool depending on the other).
 
 ### Text
 
-- **Lorem ipsum generator.** Generate placeholder text — configurable by words / sentences / paragraphs, with copy-to-clipboard output.
+- **Lorem ipsum generator.** Generate placeholder text. No configuration controls — just two buttons: copy and re-generate.
 - **Text diff.**
