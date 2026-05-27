@@ -84,8 +84,8 @@ describe("VideoTrimmer", () => {
     expect(probeVideoDurationMock).toHaveBeenCalledWith("/tmp/clip.mp4");
     expect(allowMediaPreviewMock).toHaveBeenCalledWith(["/tmp/clip.mp4"]);
     expect(preparePreviewProxyMock).not.toHaveBeenCalled();
-    // Duration rendered from the probe.
-    expect(screen.getByText(/00:10\.000/)).toBeInTheDocument();
+    // Duration rendered from the probe (header line).
+    expect(screen.getByText(/Duration 00:10\.000/)).toBeInTheDocument();
     // Default markers span the whole clip.
     expect(screen.getByLabelText(/^start$/i)).toHaveValue("00:00.000");
     expect(screen.getByLabelText(/^end$/i)).toHaveValue("00:10.000");

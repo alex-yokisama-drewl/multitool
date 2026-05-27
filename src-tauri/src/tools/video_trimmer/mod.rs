@@ -77,8 +77,9 @@ pub async fn prepare_preview_proxy<R: Runtime>(
     path: PathBuf,
     registry: State<'_, JobRegistry>,
 ) -> Result<ProxyResult, AppError> {
-    // One proxy per job id keeps temp names unique + correlatable.
-    let dest = std::env::temp_dir().join(format!("{PROXY_PREFIX}{}.mp4", job_id.0));
+    // One proxy per job id keeps temp names unique + correlatable. WebM so
+    // WebKitGTK can decode it without proprietary codecs (see proxy.rs).
+    let dest = std::env::temp_dir().join(format!("{PROXY_PREFIX}{}.webm", job_id.0));
     let scope_app = app.clone();
 
     crate::ipc::run_streaming_job(app, registry, job_id, move |cancel, emit| {
@@ -132,6 +133,6 @@ fn is_owned_proxy(path: &Path) -> bool {
     let named = path
         .file_name()
         .and_then(|n| n.to_str())
-        .is_some_and(|n| n.starts_with(PROXY_PREFIX) && n.ends_with(".mp4"));
+        .is_some_and(|n| n.starts_with(PROXY_PREFIX) && n.ends_with(".webm"));
     in_temp && named
 }
