@@ -95,5 +95,11 @@ export async function cleanupPreviewProxy(path: string): Promise<void> {
   await invoke<void>("cleanup_preview_proxy", { path });
 }
 
+// Sweep preview proxies orphaned by a previous session (a hard app-close
+// tears down the WebView without running cleanup). Called on tool mount.
+export async function cleanupStaleProxies(): Promise<void> {
+  await invoke<void>("cleanup_stale_proxies");
+}
+
 // Re-export so callers don't reach back into `../errors` directly.
 export type VideoTrimmerError = AppErrorEnvelope;

@@ -4,9 +4,6 @@ interface VideoScrubberProps {
   durationMs: number;
   startMs: number;
   endMs: number;
-  /// Live playhead position (the player's current time), drawn as a thin
-  /// marker so the user can see where playback is relative to the window.
-  currentMs: number;
   /// Fired continuously while a handle is dragged. The parent clamps and
   /// updates the markers.
   onChange: (startMs: number, endMs: number) => void;
@@ -26,7 +23,6 @@ export function VideoScrubber({
   durationMs,
   startMs,
   endMs,
-  currentMs,
   onChange,
   onSeek,
 }: VideoScrubberProps) {
@@ -79,12 +75,6 @@ export function VideoScrubber({
           left: `${String(pct(startMs))}%`,
           width: `${String(Math.max(0, pct(endMs) - pct(startMs)))}%`,
         }}
-      />
-      {/* Playhead. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute top-0 bottom-0 w-px bg-foreground/70"
-        style={{ left: `${String(pct(currentMs))}%` }}
       />
       <Handle
         kind="start"

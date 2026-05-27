@@ -10,6 +10,7 @@ const {
   preparePreviewProxyMock,
   probeVideoDurationMock,
   cleanupPreviewProxyMock,
+  cleanupStaleProxiesMock,
 } = vi.hoisted(() => ({
   pickVideoFileMock: vi.fn(),
   revealInFolderMock: vi.fn(),
@@ -18,6 +19,7 @@ const {
   preparePreviewProxyMock: vi.fn(),
   probeVideoDurationMock: vi.fn(),
   cleanupPreviewProxyMock: vi.fn(),
+  cleanupStaleProxiesMock: vi.fn(),
 }));
 
 vi.mock("@/lib/system", () => ({
@@ -30,6 +32,7 @@ vi.mock("@/lib/tools/videoTrimmer", () => ({
   preparePreviewProxy: preparePreviewProxyMock,
   probeVideoDuration: probeVideoDurationMock,
   cleanupPreviewProxy: cleanupPreviewProxyMock,
+  cleanupStaleProxies: cleanupStaleProxiesMock,
 }));
 
 import { VideoTrimmer } from "./VideoTrimmer";
@@ -57,6 +60,7 @@ beforeEach(() => {
   preparePreviewProxyMock.mockReset().mockResolvedValue({ proxy_path: PROXY });
   probeVideoDurationMock.mockReset().mockResolvedValue({ duration_ms: 10_000 });
   cleanupPreviewProxyMock.mockReset().mockResolvedValue(undefined);
+  cleanupStaleProxiesMock.mockReset().mockResolvedValue(undefined);
 
   // The preview path fetches the proxy bytes and plays them from an object
   // URL — stub both (jsdom implements neither usefully). Captured in vars

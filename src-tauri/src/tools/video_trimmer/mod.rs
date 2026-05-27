@@ -125,6 +125,25 @@ pub fn cleanup_preview_proxy(path: PathBuf) -> Result<(), AppError> {
     }
 }
 
+/// Sweep every preview proxy left in the temp dir. Called when the tool
+/// mounts so proxies orphaned by a hard app-close (Tauri tears the WebView
+/// down without running React cleanup, so the in-flight proxy survives) get
+/// reclaimed on the next launch. They're throwaway previews, so deleting
+/// all of them is safe.
+#[tauri::command]
+pub fn cleanup_stale_proxies() -> Result<(), AppError> {
+    let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
+        return Ok(());
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if is_owned_proxy(&path) {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+    Ok(())
+}
+
 /// A path is a deletable proxy only if it sits directly in the OS temp dir
 /// and its filename carries our [`PROXY_PREFIX`]. Keeps a stray IPC call
 /// from turning `cleanup_preview_proxy` into an arbitrary-file unlink.

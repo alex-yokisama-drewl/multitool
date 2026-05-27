@@ -8,6 +8,7 @@ import { pickVideoFile, revealInFolder, videoAssetUrl } from "@/lib/system";
 import { formatMs } from "@/lib/time";
 import {
   cleanupPreviewProxy,
+  cleanupStaleProxies,
   preparePreviewProxy,
   probeVideoDuration,
   trimVideo,
@@ -89,9 +90,11 @@ export function VideoTrimmer() {
     };
   }, [navigate]);
 
-  // Tear down the preview proxy + object URL on unmount. Reads refs
-  // directly so the effect has no component-scope deps.
+  // Sweep proxies orphaned by a previous session on mount, and tear down
+  // this session's proxy + object URL on unmount. Reads refs directly so
+  // the effect has no component-scope deps.
   useEffect(() => {
+    void cleanupStaleProxies();
     return () => {
       if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
       const proxy = proxyRef.current;
@@ -208,16 +211,31 @@ export function VideoTrimmer() {
     setEndMs(newEnd);
   };
 
+  // Playback is clamped to the trim window: play starts at `startMs` (or
+  // resumes within the window) and pauses when the playhead reaches
+  // `endMs`, so the preview reflects exactly what gets trimmed.
   const togglePlay = () => {
     const video = videoRef.current;
     if (!video) return;
-    if (video.paused) void video.play();
-    else video.pause();
+    if (video.paused) {
+      const ms = video.currentTime * 1000;
+      if (ms < startMs || ms >= endMs - 1) seekTo(startMs);
+      void video.play();
+    } else {
+      video.pause();
+    }
   };
 
   const onTimeUpdate = () => {
     const video = videoRef.current;
-    if (video) setCurrentMs(video.currentTime * 1000);
+    if (!video) return;
+    const ms = video.currentTime * 1000;
+    if (ms >= endMs) {
+      video.pause();
+      seekTo(endMs);
+      return;
+    }
+    setCurrentMs(ms);
   };
 
   const onVolumeChange = (pct: number) => {
@@ -341,6 +359,10 @@ export function VideoTrimmer() {
           {/* No native `controls`: WebView control sets are inconsistent
               (fullscreen / playback-speed / download leak through), so we
               render a minimal bar with exactly what a trim preview needs. */}
+          {/* No native `controls`: WebView control sets are inconsistent.
+              Capped height so a vertical video stays small and the controls
+              below it are visible without scrolling; object-contain
+              letterboxes rather than stretches. */}
           <video
             ref={videoRef}
             src={state.previewUrl}
@@ -352,10 +374,12 @@ export function VideoTrimmer() {
             onLoadedMetadata={() => {
               if (videoRef.current) videoRef.current.volume = volume;
             }}
-            className="w-full rounded-md border border-border bg-black"
+            className="mx-auto block max-h-[40vh] w-full rounded-md border border-border bg-black object-contain"
           />
 
-          {/* Playback bar: play/pause + seek-anywhere + volume. */}
+          {/* Playback bar: play/pause + seek within the trim window + volume.
+              The seek bar and time readout are clamped to [start, end] so the
+              preview matches exactly what gets trimmed. */}
           <div className="flex items-center gap-3">
             <Button
               variant="outline"
@@ -366,14 +390,15 @@ export function VideoTrimmer() {
               {playing ? <Pause /> : <Play />}
             </Button>
             <span className="whitespace-nowrap font-mono text-xs tabular-nums text-muted-foreground">
-              {formatMs(currentMs)} / {formatMs(state.durationMs)}
+              {formatMs(Math.max(0, currentMs - startMs))} /{" "}
+              {formatMs(endMs - startMs)}
             </span>
             <input
               type="range"
               aria-label="Seek"
-              min={0}
-              max={Math.max(1, state.durationMs)}
-              value={Math.round(Math.min(currentMs, state.durationMs))}
+              min={startMs}
+              max={Math.max(startMs + 1, endMs)}
+              value={Math.round(Math.min(Math.max(currentMs, startMs), endMs))}
               onChange={(e) => seekTo(Number(e.target.value))}
               className="flex-1 accent-primary"
             />
@@ -398,7 +423,6 @@ export function VideoTrimmer() {
             durationMs={state.durationMs}
             startMs={startMs}
             endMs={endMs}
-            currentMs={currentMs}
             onChange={onRangeChange}
             onSeek={seekTo}
           />
