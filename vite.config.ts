@@ -36,6 +36,10 @@ const e2eAliases: Record<string, string> = e2e
         import.meta.dirname,
         "./tests/e2e/mocks/videoFormatConverter.ts",
       ),
+      "@/lib/tools/videoTrimmer": path.resolve(
+        import.meta.dirname,
+        "./tests/e2e/mocks/videoTrimmer.ts",
+      ),
       "@/lib/tools/audioExtractor": path.resolve(
         import.meta.dirname,
         "./tests/e2e/mocks/audioExtractor.ts",

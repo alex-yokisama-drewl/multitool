@@ -328,10 +328,8 @@ export function VideoTrimmer() {
             <div className="text-xs text-muted-foreground">
               Preparing preview
             </div>
-            <div className="mt-1">
-              This format isn&apos;t previewable directly, so we&apos;re
-              transcoding a temporary preview of{" "}
-              <span className="font-mono">{fileName(state.path)}</span>.
+            <div className="mt-1 font-medium font-mono">
+              {fileName(state.path)}
             </div>
             <Progress
               className="mt-3"
