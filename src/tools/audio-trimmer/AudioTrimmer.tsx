@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Pause, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { TimeInput } from "@/components/TimeInput";
 import {
   createPreviewPlayer,
   loadAudioPreview,
@@ -11,6 +10,7 @@ import {
   type PreviewPlayer,
 } from "@/lib/audioPreview";
 import { allowMediaPreview, pickAudioFile, revealInFolder } from "@/lib/system";
+import { formatMs } from "@/lib/time";
 import { trimAudio } from "@/lib/tools/audioTrimmer";
 import { fileName } from "@/lib/utils";
 import { Waveform } from "./Waveform";
@@ -410,71 +410,6 @@ function PickedView({
   );
 }
 
-interface TimeInputProps {
-  id: string;
-  label: string;
-  ms: number;
-  max: number;
-  onChange: (ms: number) => void;
-  /// "right" right-aligns the input's text + label so the End block
-  /// reads with its content flush against the row's right edge. Default
-  /// is left-aligned (used by Start).
-  align?: "left" | "right";
-}
-
-function TimeInput({
-  id,
-  label,
-  ms,
-  max,
-  onChange,
-  align = "left",
-}: TimeInputProps) {
-  // Render the live value as a controlled string so partial edits
-  // ("00:02:") don't get reformatted mid-keystroke. Commit on blur
-  // (and Enter); reformatted display lands then.
-  const [text, setText] = useState(() => formatMs(ms));
-  // Sync with the parent prop via a render-phase comparison rather
-  // than `useEffect` — keeps `setText` out of an effect body (lint
-  // forbids it) without a cascade. React converges on the next render
-  // when `lastMs === ms`.
-  const [lastMs, setLastMs] = useState(ms);
-  if (ms !== lastMs) {
-    setLastMs(ms);
-    setText(formatMs(ms));
-  }
-
-  const commit = (raw: string) => {
-    const parsed = parseMs(raw);
-    if (parsed === null) {
-      setText(formatMs(ms));
-      return;
-    }
-    const clamped = Math.min(max, Math.max(0, parsed));
-    onChange(clamped);
-    setText(formatMs(clamped));
-  };
-
-  const alignClass = align === "right" ? "text-right" : "text-left";
-  return (
-    <div className={`space-y-1 ${align === "right" ? "text-right" : ""}`}>
-      <Label htmlFor={id}>{label}</Label>
-      <Input
-        id={id}
-        type="text"
-        inputMode="numeric"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={(e) => commit(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") commit(e.currentTarget.value);
-        }}
-        className={`font-mono w-32 ${alignClass}`}
-      />
-    </div>
-  );
-}
-
 interface ErrorAlertProps {
   envelope: AppErrorEnvelope;
 }
@@ -489,31 +424,6 @@ function ErrorAlert({ envelope }: ErrorAlertProps) {
       <div className="mt-1">{envelope.message}</div>
     </div>
   );
-}
-
-/// Format a duration in milliseconds as `MM:SS.mmm`. Negative inputs
-/// clamp to zero. Reused by the numeric inputs and the picked-view
-/// summary; exported for tests.
-export function formatMs(ms: number): string {
-  const total = Math.max(0, Math.floor(ms));
-  const mins = Math.floor(total / 60_000);
-  const secs = Math.floor((total % 60_000) / 1000);
-  const millis = total % 1000;
-  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}.${String(millis).padStart(3, "0")}`;
-}
-
-/// Parse `MM:SS` or `MM:SS.mmm` (millis 1–3 digits) into a millisecond
-/// count. Returns `null` for malformed input; the caller falls back to
-/// the previous valid value. Exported for tests.
-export function parseMs(s: string): number | null {
-  const trimmed = s.trim();
-  const match = /^(\d+):(\d+)(?:\.(\d{1,3}))?$/.exec(trimmed);
-  if (!match) return null;
-  const mins = Number(match[1]);
-  const secs = Number(match[2]);
-  if (secs >= 60) return null;
-  const millis = match[3] !== undefined ? Number(match[3].padEnd(3, "0")) : 0;
-  return mins * 60_000 + secs * 1000 + millis;
 }
 
 // Re-export FADE_PRESET_MS so tests can assert it without re-deriving.
