@@ -165,8 +165,8 @@ Tile: category `video`, color `rose` (converter is `teal` — keep them distinct
 | # | Commit | Status |
 | --- | --- | --- |
 | 1 | `docs(video-trimmer): brief + plan working doc` | done `b6c4422` |
-| 2 | `refactor(time): extract formatMs/parseMs (+TimeInput) to a shared module` | done (SHA in #3) — `formatMs`/`parseMs` → `src/lib/time.ts`; `TimeInput` → `src/components/TimeInput.tsx`; Audio Trimmer imports both; tests moved to `src/lib/time.test.ts`. Gotcha: each commit records the *previous* commit's SHA here (a commit can't contain its own hash). |
-| 3 | `feat(video-trimmer): core trim convert + arg/naming logic + unit tests` | pending |
+| 2 | `refactor(time): extract formatMs/parseMs (+TimeInput) to a shared module` | done `9c99268` — `formatMs`/`parseMs` → `src/lib/time.ts`; `TimeInput` → `src/components/TimeInput.tsx`; Audio Trimmer imports both; tests moved to `src/lib/time.test.ts`. Gotcha: each commit records the *previous* commit's SHA here (a commit can't contain its own hash). |
+| 3 | `feat(video-trimmer): core trim convert + arg/naming logic + unit tests` | done (SHA in #4) — `convert.rs`: `Opts{start_ms,end_ms}`, `convert()` (probe→clamp→validate→ffmpeg copy→cleanup), `derive_output_path` (`{stem}_trimmed.{ext}`), `build_args`. Gotchas: (1) clippy `doc_markdown` treats a doc line starting with `-`/`+` as a list item — keep flag names mid-line. (2) `vec![]` over init-then-push (clippy `vec_init_then_push`). `convert()` body coverage comes via #4's synth-clip job tests. |
 | 4 | `feat(video-trimmer): core job orchestrator + duration probe + tests` | pending |
 | 5 | `feat(video-trimmer): core preview-proxy transcode + tests` | pending |
 | 6 | `feat(video-trimmer): tauri commands + register + asset-scope video exts` | pending |
