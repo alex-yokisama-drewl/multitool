@@ -28,6 +28,13 @@ export function audioAssetUrl(path: string): string {
   return rawConvertFileSrc(path);
 }
 
+// Same wrapper, video-shaped name — the Video Trimmer feeds the URL into a
+// `<video>` element (either the picked source directly, or a transcoded
+// preview proxy). One impl, a clearly-named call site.
+export function videoAssetUrl(path: string): string {
+  return rawConvertFileSrc(path);
+}
+
 export async function pickPdfFile(): Promise<string | null> {
   const result = await open({
     multiple: false,
