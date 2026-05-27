@@ -20,17 +20,12 @@ Plans and ideas not yet committed to a milestone. When an item moves into active
 - **Image resize.**
 - **Image compress.**
 
-### Audio
-
-- **Audio compress.**
-- **Audio concat.**
-
 ### Video
 
 - **Video compress.**
 - **Frame-accurate trim (re-encode).** The Video Trimmer ships keyframe-snapped stream-copy cuts (lossless, instant). A re-encode mode would give frame-accurate start points at the cost of speed + a quality generation; offer it as a toggle when "the cut is a few seconds off" becomes a real complaint.
-- **Faster / lighter preview proxy.** Today every pick transcodes a full-length WebM proxy and holds it in memory as a blob — fine for short clips, heavy for long sources. Options: (a) remux-copy instead of re-encoding when the source's video codec is already WebView-decodable (VP8/VP9/AV1) and only the container is the problem; (b) transcode just the trim window, re-running when markers move; (c) stream the proxy via a range-capable custom protocol instead of an in-memory blob.
 
 ### Text
 
+- **Lorem ipsum generator.** Generate placeholder text — configurable by words / sentences / paragraphs, with copy-to-clipboard output.
 - **Text diff.**
