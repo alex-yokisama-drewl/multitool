@@ -45,9 +45,12 @@ describe("Dashboard", () => {
     expect(
       within(audioSection).getByRole("link", { name: /trimmer/i }),
     ).toBeInTheDocument();
-    // Video section also carries the Audio Extractor.
+    // Video section also carries the Audio Extractor + Trimmer.
     expect(
       within(videoSection).getByRole("link", { name: /audio extractor/i }),
+    ).toBeInTheDocument();
+    expect(
+      within(videoSection).getByRole("link", { name: /trimmer/i }),
     ).toBeInTheDocument();
   });
 
@@ -97,14 +100,17 @@ describe("Dashboard", () => {
     ).toBeInTheDocument();
     // Two tiles under Audio now (Format Converter + Trimmer).
     expect(within(audioSection).getAllByRole("link")).toHaveLength(2);
-    // Video section carries the Format Converter + Audio Extractor.
+    // Video section carries the Format Converter + Trimmer + Audio Extractor.
     expect(
       within(videoSection).getByRole("link", { name: /format converter/i }),
     ).toBeInTheDocument();
     expect(
+      within(videoSection).getByRole("link", { name: /trimmer/i }),
+    ).toBeInTheDocument();
+    expect(
       within(videoSection).getByRole("link", { name: /audio extractor/i }),
     ).toBeInTheDocument();
-    expect(within(videoSection).getAllByRole("link")).toHaveLength(2);
+    expect(within(videoSection).getAllByRole("link")).toHaveLength(3);
 
     // PDF / Image / Audio / Video sections render in toolCategories order.
     const headings = screen.getAllByRole("heading", { level: 2 });
@@ -149,6 +155,9 @@ describe("Dashboard", () => {
     const videoFormat = within(videoSection).getByRole("link", {
       name: /format converter/i,
     });
+    const videoTrimmer = within(videoSection).getByRole("link", {
+      name: /trimmer/i,
+    });
     const audioExtractor = within(videoSection).getByRole("link", {
       name: /audio extractor/i,
     });
@@ -160,6 +169,7 @@ describe("Dashboard", () => {
     expect(audioFormat.getAttribute("data-tile-color")).toBe("emerald");
     expect(audioTrimmer.getAttribute("data-tile-color")).toBe("violet");
     expect(videoFormat.getAttribute("data-tile-color")).toBe("teal");
+    expect(videoTrimmer.getAttribute("data-tile-color")).toBe("rose");
     expect(audioExtractor.getAttribute("data-tile-color")).toBe("amber");
 
     // Inline style binds the CSS var so the palette in globals.css is the
@@ -168,6 +178,7 @@ describe("Dashboard", () => {
     expect(audioFormat.style.backgroundColor).toBe("var(--tile-emerald)");
     expect(audioTrimmer.style.backgroundColor).toBe("var(--tile-violet)");
     expect(videoFormat.style.backgroundColor).toBe("var(--tile-teal)");
+    expect(videoTrimmer.style.backgroundColor).toBe("var(--tile-rose)");
     expect(audioExtractor.style.backgroundColor).toBe("var(--tile-amber)");
   });
 });

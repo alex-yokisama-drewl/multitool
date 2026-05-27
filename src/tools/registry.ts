@@ -7,6 +7,7 @@ import { imageFormatConverterTool } from "./image-format-converter";
 import { imagesToPdfTool } from "./images-to-pdf";
 import { pdfToImagesTool } from "./pdf-to-images";
 import { videoFormatConverterTool } from "./video-format-converter";
+import { videoTrimmerTool } from "./video-trimmer";
 
 export type ToolCategory = "pdf" | "image" | "audio" | "video";
 
@@ -55,5 +56,6 @@ export const tools: readonly Tool[] = [
   audioFormatConverterTool,
   audioTrimmerTool,
   videoFormatConverterTool,
+  videoTrimmerTool,
   audioExtractorTool,
 ];
