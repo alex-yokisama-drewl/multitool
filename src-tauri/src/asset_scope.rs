@@ -42,6 +42,18 @@ const IMAGE_EXTS: &[&str] = &[
 // regardless of extension.
 const AUDIO_EXTS: &[&str] = &["mp3", "wav", "flac", "ogg", "oga"];
 
+// Every extension the Video Trimmer picker (`pickVideoFile`) lets through.
+// The trimmer previews the source directly when the WebView can decode it
+// (and a transcoded mp4 proxy otherwise — also covered here). Granting
+// scope is decoupled from "will the webview render this": a container the
+// browser can't decode still gets a scope grant so `convertFileSrc(path)`
+// resolves; the tool then falls back to a proxy. No new attack surface —
+// these are still files the user picked through a picker.
+const VIDEO_EXTS: &[&str] = &[
+    "mp4", "m4v", "mov", "mkv", "webm", "avi", "3gp", "3g2", "ts", "mts", "m2ts", "mxf", "flv",
+    "ogv", "wmv", "asf", "vob", "divx", "mpg", "mpeg",
+];
+
 fn is_media_path(path: &Path) -> bool {
     let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
         return false;
@@ -49,6 +61,7 @@ fn is_media_path(path: &Path) -> bool {
     IMAGE_EXTS
         .iter()
         .chain(AUDIO_EXTS.iter())
+        .chain(VIDEO_EXTS.iter())
         .any(|allowed| allowed.eq_ignore_ascii_case(ext))
 }
 
