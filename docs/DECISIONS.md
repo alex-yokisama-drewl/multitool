@@ -6,6 +6,22 @@ Choices, caveats, and recipes that affect future work — patterns we must keep 
 
 ---
 
+## Video Trimmer: stream-copy trim, always-on WebM preview proxy via blob URL
+
+The Video Trimmer (commits `b6c4422…`) is the second video tool. It trims by ffmpeg **stream copy**, and its preview is the load-bearing part — several decisions there cost real iteration and shouldn't be unwound:
+
+- **Trim is a stream copy, output preserves the source container.** `-ss <start>` before `-i` (fast input seek) + `-t <dur>` after, `-map 0:v? -map 0:a? -c copy -avoid_negative_ts make_zero`. Near-instant, lossless, accepts any container ffmpeg can remux. **Cut points snap to the nearest keyframe at/before the start** — the output can start slightly earlier than asked. Accepted tradeoff; frame-accurate trimming would need a re-encode (a future option, see BACKLOG). Subtitle/data/attachment streams are dropped (A/V only) — copying them across containers is a footgun. Output `{stem}_trimmed.{ext}` via `unique_path`.
+- **Preview always goes through a transcoded WebM proxy, played from a blob URL — never the source's asset URL.** Two hard constraints, learned by smoke-testing, drive this:
+  1. **WebKitGTK's `<video>` can't load Tauri's asset-protocol scheme at all** (its GStreamer pipeline rejects the custom scheme → `play()` throws `NotSupportedError`), regardless of codec. But `fetch()` on the asset URL works (same path the Audio Trimmer relies on). So the UI `fetch`es the proxy bytes and plays them from `URL.createObjectURL(blob)`.
+  2. **WebKitGTK decodes H.264/AAC only with proprietary gstreamer plugins** that often aren't installed. So the proxy is **VP9/Opus in WebM** (`-deadline realtime -cpu-used 8 -crf 32`, scaled ≤1280w) — open codecs it ships with. An mp4/H.264 proxy fails exactly where the fallback is needed.
+
+  Net: every pick transcodes a small WebM proxy ([`proxy.rs`](../src-tauri/multitool-core/src/tools/video_trimmer/proxy.rs)) to the OS temp dir, the frontend fetches+blobs it, and the trim still runs against the **original** file. Don't "optimize" this back to a native `<video src={assetUrl}>` — it'll work on Chromium/WebView2 and silently break on Linux.
+- **Preview proxies are swept on tool mount, not just per-pick.** A hard app-close tears down the WebView without running React unmount cleanup, orphaning the in-flight proxy. `cleanup_stale_proxies` deletes every `multitool-preview-*.webm` in the temp dir (all throwaway) and runs when the tool mounts; per-pick/reset teardown handles the in-session case. Both `cleanup_*` commands are guarded to the temp dir + the `multitool-preview-` prefix so a stray IPC call can't unlink arbitrary files.
+- **Duration comes from a backend probe, not `<video>.duration`.** `probe_video_duration` (wrapping `ffmpeg::probe_duration_secs`) sizes the trim window up front — reliable regardless of what the WebView can decode.
+- **Player playback is clamped to the trim window.** No native `controls` (fullscreen/speed/download leak inconsistently across WebViews); a minimal bar (play/pause + seek + volume) plays only `[start, end]`. Time helpers `formatMs`/`parseMs` + the `TimeInput` component were hoisted to [`src/lib/time.ts`](../src/lib/time.ts) + [`src/components/TimeInput.tsx`](../src/components/TimeInput.tsx) (shared with the Audio Trimmer).
+
+---
+
 ## Image Crop: backend-served format set, source-format preservation, reusable clamp
 
 The Image Crop tool (commits `83c83f1…`) is the second image tool and the trigger for making the encodable-raster-format set a single, backend-owned source of truth:
