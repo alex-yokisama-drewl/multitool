@@ -8,5 +8,9 @@
 //! [`crate::ffmpeg`].
 
 mod convert;
+mod job;
+mod probe;
 
 pub use convert::{convert, Opts};
+pub use job::{run_job, JobResult, Progress};
+pub use probe::probe_duration_ms;
