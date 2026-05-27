@@ -89,6 +89,17 @@ export function audioAssetUrl(path: string): string {
   return `mock-asset://${path}`;
 }
 
+// Video Trimmer fetches this URL and plays the bytes from a blob. A tiny
+// `data:` URL makes `fetch()` resolve in a plain browser so the picked
+// view renders; the `<video>` won't actually decode it, but the happy-path
+// spec only drives the trim flow, not playback.
+const TINY_WEBM = "data:video/webm;base64,AAAA";
+
+export function videoAssetUrl(_path: string): string {
+  void _path;
+  return TINY_WEBM;
+}
+
 export function allowMediaPreview(_paths: string[]): Promise<void> {
   void _paths;
   // No-op in browser — there's no Tauri asset-protocol scope to widen.
