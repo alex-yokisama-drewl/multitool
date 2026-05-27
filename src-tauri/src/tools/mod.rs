@@ -38,5 +38,6 @@ pub fn register_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri
         video_trimmer::probe_video_duration,
         video_trimmer::prepare_preview_proxy,
         video_trimmer::cleanup_preview_proxy,
+        video_trimmer::cleanup_stale_proxies,
     ])
 }
