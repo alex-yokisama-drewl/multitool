@@ -164,8 +164,8 @@ Tile: category `video`, color `rose` (converter is `teal` — keep them distinct
 
 | # | Commit | Status |
 | --- | --- | --- |
-| 1 | `docs(video-trimmer): brief + plan working doc` | pending |
-| 2 | `refactor(time): extract formatMs/parseMs (+TimeInput) to a shared module` | pending |
+| 1 | `docs(video-trimmer): brief + plan working doc` | done `b6c4422` |
+| 2 | `refactor(time): extract formatMs/parseMs (+TimeInput) to a shared module` | done (SHA in #3) — `formatMs`/`parseMs` → `src/lib/time.ts`; `TimeInput` → `src/components/TimeInput.tsx`; Audio Trimmer imports both; tests moved to `src/lib/time.test.ts`. Gotcha: each commit records the *previous* commit's SHA here (a commit can't contain its own hash). |
 | 3 | `feat(video-trimmer): core trim convert + arg/naming logic + unit tests` | pending |
 | 4 | `feat(video-trimmer): core job orchestrator + duration probe + tests` | pending |
 | 5 | `feat(video-trimmer): core preview-proxy transcode + tests` | pending |
