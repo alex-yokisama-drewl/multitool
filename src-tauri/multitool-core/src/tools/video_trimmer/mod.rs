@@ -10,7 +10,9 @@
 mod convert;
 mod job;
 mod probe;
+mod proxy;
 
 pub use convert::{convert, Opts};
 pub use job::{run_job, JobResult, Progress};
 pub use probe::probe_duration_ms;
+pub use proxy::generate_proxy;
