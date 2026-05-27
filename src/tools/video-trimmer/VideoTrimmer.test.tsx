@@ -4,29 +4,24 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   pickVideoFileMock,
-  allowMediaPreviewMock,
   revealInFolderMock,
   videoAssetUrlMock,
   trimVideoMock,
   preparePreviewProxyMock,
   probeVideoDurationMock,
   cleanupPreviewProxyMock,
-  probePlayableMock,
 } = vi.hoisted(() => ({
   pickVideoFileMock: vi.fn(),
-  allowMediaPreviewMock: vi.fn(),
   revealInFolderMock: vi.fn(),
   videoAssetUrlMock: vi.fn(),
   trimVideoMock: vi.fn(),
   preparePreviewProxyMock: vi.fn(),
   probeVideoDurationMock: vi.fn(),
   cleanupPreviewProxyMock: vi.fn(),
-  probePlayableMock: vi.fn(),
 }));
 
 vi.mock("@/lib/system", () => ({
   pickVideoFile: pickVideoFileMock,
-  allowMediaPreview: allowMediaPreviewMock,
   revealInFolder: revealInFolderMock,
   videoAssetUrl: videoAssetUrlMock,
 }));
@@ -36,9 +31,13 @@ vi.mock("@/lib/tools/videoTrimmer", () => ({
   probeVideoDuration: probeVideoDurationMock,
   cleanupPreviewProxy: cleanupPreviewProxyMock,
 }));
-vi.mock("@/lib/videoPreview", () => ({ probePlayable: probePlayableMock }));
 
 import { VideoTrimmer } from "./VideoTrimmer";
+
+const PROXY = "/tmp/multitool-preview-x.webm";
+
+let fetchMock: ReturnType<typeof vi.fn>;
+let createObjectURLMock: ReturnType<typeof vi.fn>;
 
 function renderTool() {
   return render(
@@ -50,20 +49,35 @@ function renderTool() {
 
 beforeEach(() => {
   pickVideoFileMock.mockReset();
-  allowMediaPreviewMock.mockReset().mockResolvedValue(undefined);
   revealInFolderMock.mockReset().mockResolvedValue(undefined);
   videoAssetUrlMock
     .mockReset()
     .mockImplementation((p: string) => `asset://${p}`);
   trimVideoMock.mockReset();
-  preparePreviewProxyMock.mockReset();
+  preparePreviewProxyMock.mockReset().mockResolvedValue({ proxy_path: PROXY });
   probeVideoDurationMock.mockReset().mockResolvedValue({ duration_ms: 10_000 });
   cleanupPreviewProxyMock.mockReset().mockResolvedValue(undefined);
-  probePlayableMock.mockReset().mockResolvedValue(true);
+
+  // The preview path fetches the proxy bytes and plays them from an object
+  // URL — stub both (jsdom implements neither usefully). Captured in vars
+  // so assertions don't reference the globals directly (unbound-method).
+  fetchMock = vi.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
+    arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
+  });
+  createObjectURLMock = vi.fn(() => "blob:preview");
+  vi.stubGlobal("fetch", fetchMock);
+  vi.stubGlobal("URL", {
+    ...URL,
+    createObjectURL: createObjectURLMock,
+    revokeObjectURL: vi.fn(),
+  });
 });
 
-/// Pick a natively-playable file and land in the picked view.
-async function pickPlayable(path = "/tmp/clip.mp4") {
+/// Pick a file and land in the picked view (every pick transcodes a proxy
+/// and plays it from a blob URL).
+async function pick(path = "/tmp/clip.mp4") {
   pickVideoFileMock.mockResolvedValueOnce(path);
   fireEvent.click(screen.getByRole("button", { name: /select video file/i }));
   await screen.findByRole("button", { name: /^trim$/i });
@@ -77,28 +91,13 @@ describe("VideoTrimmer", () => {
     ).toBeInTheDocument();
   });
 
-  it("loads a natively-playable source without transcoding a proxy", async () => {
+  it("transcodes a preview proxy and plays it from an object URL", async () => {
     renderTool();
-    await pickPlayable();
+    await pick("/tmp/movie.mkv");
 
-    expect(probeVideoDurationMock).toHaveBeenCalledWith("/tmp/clip.mp4");
-    expect(allowMediaPreviewMock).toHaveBeenCalledWith(["/tmp/clip.mp4"]);
-    expect(preparePreviewProxyMock).not.toHaveBeenCalled();
-    // Duration rendered from the probe (header line).
-    expect(screen.getByText(/Duration 00:10\.000/)).toBeInTheDocument();
-    // Default markers span the whole clip.
-    expect(screen.getByLabelText(/^start$/i)).toHaveValue("00:00.000");
-    expect(screen.getByLabelText(/^end$/i)).toHaveValue("00:10.000");
-  });
-
-  it("transcodes a preview proxy when the source isn't decodable", async () => {
-    probePlayableMock.mockResolvedValueOnce(false);
-    preparePreviewProxyMock.mockResolvedValueOnce({
-      proxy_path: "/tmp/multitool-preview-x.mp4",
-    });
-    renderTool();
-    await pickPlayable("/tmp/movie.mkv");
-
+    expect(probeVideoDurationMock).toHaveBeenCalledWith("/tmp/movie.mkv");
+    // Every pick transcodes a proxy (the WebView can't load the source's
+    // asset URL directly).
     expect(preparePreviewProxyMock).toHaveBeenCalledTimes(1);
     const [proxySource, proxyHooks] = preparePreviewProxyMock.mock.calls[0] as [
       string,
@@ -106,10 +105,15 @@ describe("VideoTrimmer", () => {
     ];
     expect(proxySource).toBe("/tmp/movie.mkv");
     expect(typeof proxyHooks.onProgress).toBe("function");
-    // Player points at the proxy asset URL, not the source.
-    expect(videoAssetUrlMock).toHaveBeenCalledWith(
-      "/tmp/multitool-preview-x.mp4",
-    );
+    // Proxy bytes are fetched via the asset URL, then played from a blob.
+    expect(videoAssetUrlMock).toHaveBeenCalledWith(PROXY);
+    expect(fetchMock).toHaveBeenCalledWith(`asset://${PROXY}`);
+    expect(createObjectURLMock).toHaveBeenCalledTimes(1);
+    // Duration rendered from the probe (header line).
+    expect(screen.getByText(/Duration 00:10\.000/)).toBeInTheDocument();
+    // Default markers span the whole clip.
+    expect(screen.getByLabelText(/^start$/i)).toHaveValue("00:00.000");
+    expect(screen.getByLabelText(/^end$/i)).toHaveValue("00:10.000");
   });
 
   it("forwards the trim window to trimVideo and shows the result", async () => {
@@ -118,7 +122,7 @@ describe("VideoTrimmer", () => {
       duration_ms: 42,
     });
     renderTool();
-    await pickPlayable();
+    await pick();
 
     fireEvent.click(screen.getByRole("button", { name: /^trim$/i }));
 
@@ -142,7 +146,7 @@ describe("VideoTrimmer", () => {
       message: "invalid range",
     });
     renderTool();
-    await pickPlayable();
+    await pick();
 
     fireEvent.click(screen.getByRole("button", { name: /^trim$/i }));
 
@@ -165,7 +169,7 @@ describe("VideoTrimmer", () => {
       },
     );
     renderTool();
-    await pickPlayable();
+    await pick();
 
     fireEvent.click(screen.getByRole("button", { name: /^trim$/i }));
     const cancelButton = await screen.findByRole("button", { name: /cancel/i });

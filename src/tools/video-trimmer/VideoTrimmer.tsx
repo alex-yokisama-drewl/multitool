@@ -4,12 +4,7 @@ import { Pause, Play, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { TimeInput } from "@/components/TimeInput";
-import {
-  allowMediaPreview,
-  pickVideoFile,
-  revealInFolder,
-  videoAssetUrl,
-} from "@/lib/system";
+import { pickVideoFile, revealInFolder, videoAssetUrl } from "@/lib/system";
 import { formatMs } from "@/lib/time";
 import {
   cleanupPreviewProxy,
@@ -17,7 +12,6 @@ import {
   probeVideoDuration,
   trimVideo,
 } from "@/lib/tools/videoTrimmer";
-import { probePlayable } from "@/lib/videoPreview";
 import { fileName } from "@/lib/utils";
 import { VideoScrubber } from "./VideoScrubber";
 import type { AppErrorEnvelope, JobResult, Opts } from "./types";
@@ -69,12 +63,17 @@ export function VideoTrimmer() {
 
   const abortRef = useRef<AbortController | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  // Path of the preview proxy currently on disk (if any), so we can clean
-  // it up on the next pick / reset / unmount. `null` when the source plays
-  // natively.
+  // The preview proxy temp file on disk + the object URL the player streams
+  // from. Both are tied to the current pick and torn down together on the
+  // next pick / reset / unmount.
   const proxyRef = useRef<string | null>(null);
+  const blobUrlRef = useRef<string | null>(null);
 
-  const cleanupProxy = () => {
+  const teardownPreview = () => {
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = null;
+    }
     const proxy = proxyRef.current;
     proxyRef.current = null;
     if (proxy) void cleanupPreviewProxy(proxy);
@@ -90,11 +89,11 @@ export function VideoTrimmer() {
     };
   }, [navigate]);
 
-  // Clean up any lingering proxy on unmount. Reads `proxyRef` directly so
-  // the effect has no component-scope deps (and `cleanupPreviewProxy` is a
-  // stable module import).
+  // Tear down the preview proxy + object URL on unmount. Reads refs
+  // directly so the effect has no component-scope deps.
   useEffect(() => {
     return () => {
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
       const proxy = proxyRef.current;
       if (proxy) void cleanupPreviewProxy(proxy);
     };
@@ -107,35 +106,42 @@ export function VideoTrimmer() {
 
   const pick = async () => {
     stopPlayback();
-    cleanupProxy();
+    teardownPreview();
     const picked = await pickVideoFile();
     if (!picked) return;
     setState({ kind: "loading", path: picked });
     try {
       const { duration_ms } = await probeVideoDuration(picked);
-      await allowMediaPreview([picked]);
-      const sourceUrl = videoAssetUrl(picked);
 
-      let previewUrl = sourceUrl;
-      if (!(await probePlayable(sourceUrl))) {
-        // The WebView can't decode this source — transcode a proxy so the
-        // player is never blind. Cancellable via the same abort path.
-        const controller = new AbortController();
-        abortRef.current = controller;
-        setState({ kind: "preparing", path: picked, fraction: 0 });
-        const { proxy_path } = await preparePreviewProxy(picked, {
-          signal: controller.signal,
-          onProgress: (p) => {
-            setState((prev) =>
-              prev.kind === "preparing"
-                ? { ...prev, fraction: p.fraction }
-                : prev,
-            );
-          },
-        });
-        proxyRef.current = proxy_path;
-        previewUrl = videoAssetUrl(proxy_path);
+      // Always transcode a small WebM preview proxy. We can't point the
+      // <video> at the source's asset URL directly — WebKitGTK's media
+      // pipeline won't load a custom protocol scheme — so we fetch the
+      // proxy bytes and play them from an object URL, which every WebView
+      // accepts. The trim itself still targets the original file.
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setState({ kind: "preparing", path: picked, fraction: 0 });
+      const { proxy_path } = await preparePreviewProxy(picked, {
+        signal: controller.signal,
+        onProgress: (p) => {
+          setState((prev) =>
+            prev.kind === "preparing"
+              ? { ...prev, fraction: p.fraction }
+              : prev,
+          );
+        },
+      });
+      proxyRef.current = proxy_path;
+
+      const response = await fetch(videoAssetUrl(proxy_path));
+      if (!response.ok) {
+        throw new Error(`preview fetch failed (${response.status.toString()})`);
       }
+      const bytes = await response.arrayBuffer();
+      const url = URL.createObjectURL(
+        new Blob([bytes], { type: "video/webm" }),
+      );
+      blobUrlRef.current = url;
 
       setStartMs(0);
       setEndMs(duration_ms);
@@ -143,7 +149,7 @@ export function VideoTrimmer() {
       setState({
         kind: "picked",
         path: picked,
-        previewUrl,
+        previewUrl: url,
         durationMs: duration_ms,
       });
     } catch (err) {
@@ -250,7 +256,7 @@ export function VideoTrimmer() {
           },
         },
       );
-      cleanupProxy();
+      teardownPreview();
       setState({ kind: "done", result });
     } catch (err) {
       setState({
@@ -269,7 +275,7 @@ export function VideoTrimmer() {
 
   const reset = () => {
     stopPlayback();
-    cleanupProxy();
+    teardownPreview();
     setState({ kind: "idle" });
   };
 
