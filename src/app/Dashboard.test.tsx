@@ -52,6 +52,13 @@ describe("Dashboard", () => {
     expect(
       within(videoSection).getByRole("link", { name: /trimmer/i }),
     ).toBeInTheDocument();
+    // Text section carries the Lorem Ipsum tile.
+    const textSection = screen
+      .getByRole("heading", { name: /^text$/i })
+      .closest("section")!;
+    expect(
+      within(textSection).getByRole("link", { name: /lorem ipsum/i }),
+    ).toBeInTheDocument();
   });
 
   it("groups tiles into category sections in registry order", () => {
@@ -112,13 +119,22 @@ describe("Dashboard", () => {
     ).toBeInTheDocument();
     expect(within(videoSection).getAllByRole("link")).toHaveLength(3);
 
-    // PDF / Image / Audio / Video sections render in toolCategories order.
+    const textSection = screen
+      .getByRole("heading", { name: /^text$/i })
+      .closest("section")!;
+    expect(
+      within(textSection).getByRole("link", { name: /lorem ipsum/i }),
+    ).toBeInTheDocument();
+    expect(within(textSection).getAllByRole("link")).toHaveLength(1);
+
+    // PDF / Image / Audio / Video / Text sections render in toolCategories order.
     const headings = screen.getAllByRole("heading", { level: 2 });
     expect(headings.map((h) => h.textContent)).toEqual([
       "PDF",
       "Image",
       "Audio",
       "Video",
+      "Text",
     ]);
   });
 
@@ -161,6 +177,12 @@ describe("Dashboard", () => {
     const audioExtractor = within(videoSection).getByRole("link", {
       name: /audio extractor/i,
     });
+    const textSection = screen
+      .getByRole("heading", { name: /^text$/i })
+      .closest("section")!;
+    const lorem = within(textSection).getByRole("link", {
+      name: /lorem ipsum/i,
+    });
 
     expect(pdfToImages.getAttribute("data-tile-color")).toBe("rose");
     expect(imagesToPdf.getAttribute("data-tile-color")).toBe("amber");
@@ -171,6 +193,7 @@ describe("Dashboard", () => {
     expect(videoFormat.getAttribute("data-tile-color")).toBe("teal");
     expect(videoTrimmer.getAttribute("data-tile-color")).toBe("rose");
     expect(audioExtractor.getAttribute("data-tile-color")).toBe("amber");
+    expect(lorem.getAttribute("data-tile-color")).toBe("teal");
 
     // Inline style binds the CSS var so the palette in globals.css is the
     // single source of truth for the actual color value.
@@ -180,5 +203,6 @@ describe("Dashboard", () => {
     expect(videoFormat.style.backgroundColor).toBe("var(--tile-teal)");
     expect(videoTrimmer.style.backgroundColor).toBe("var(--tile-rose)");
     expect(audioExtractor.style.backgroundColor).toBe("var(--tile-amber)");
+    expect(lorem.style.backgroundColor).toBe("var(--tile-teal)");
   });
 });

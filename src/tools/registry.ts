@@ -5,11 +5,12 @@ import { audioTrimmerTool } from "./audio-trimmer";
 import { imageCropTool } from "./image-crop";
 import { imageFormatConverterTool } from "./image-format-converter";
 import { imagesToPdfTool } from "./images-to-pdf";
+import { loremTool } from "./lorem";
 import { pdfToImagesTool } from "./pdf-to-images";
 import { videoFormatConverterTool } from "./video-format-converter";
 import { videoTrimmerTool } from "./video-trimmer";
 
-export type ToolCategory = "pdf" | "image" | "audio" | "video";
+export type ToolCategory = "pdf" | "image" | "audio" | "video" | "text";
 
 export interface ToolCategoryMeta {
   id: ToolCategory;
@@ -24,6 +25,7 @@ export const toolCategories: readonly ToolCategoryMeta[] = [
   { id: "image", label: "Image" },
   { id: "audio", label: "Audio" },
   { id: "video", label: "Video" },
+  { id: "text", label: "Text" },
 ];
 
 // Tile colors are CSS-variable tokens defined in src/app/globals.css as
@@ -58,4 +60,5 @@ export const tools: readonly Tool[] = [
   videoFormatConverterTool,
   videoTrimmerTool,
   audioExtractorTool,
+  loremTool,
 ];
