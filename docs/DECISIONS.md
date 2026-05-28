@@ -6,6 +6,16 @@ Choices, caveats, and recipes that affect future work — patterns we must keep 
 
 ---
 
+## Lorem Ipsum: text-only tools skip the multitool-core / IPC split
+
+The Lorem Ipsum generator (commits `9465661…366abc5`) is the first **text** category tool and the first to ship without a Rust side. The shape worth pinning so the next text tool (e.g. diff) follows it rather than re-litigating:
+
+- **No `multitool-core/tools/*/` folder, no `#[tauri::command]` shim, no `src/lib/tools/*.ts` wrapper.** Generation is in-component ([`src/tools/lorem/generator.ts`](../src/tools/lorem/generator.ts)). The justifications for the standard split — heavy work, file I/O, cancellation, progress — don't apply to instant pure-string work. Forcing the split would mean an IPC hop, an alias entry in [`vite.config.ts`](../vite.config.ts), and a mock under `tests/e2e/mocks/` for a function that does `Array.from({ length }, …).join(…)`. ARCHITECTURE §3.2's "webview is rendering-only" is the rule for *heavy work*; rendering text is rendering.
+- **Clipboard via `navigator.clipboard.writeText`, not `tauri-plugin-clipboard-manager`.** Works in the Tauri webview without adding a plugin or a capability grant. If a future tool needs richer clipboard ops (images, MIME types, read-from-clipboard), revisit then.
+- **New category = the narrow shared edit ADDING_A_TOOL allows.** Extending `ToolCategory` + `toolCategories` in [`src/tools/registry.ts`](../src/tools/registry.ts) + adding the section assertion in [`Dashboard.test.tsx`](../src/app/Dashboard.test.tsx) is the right surface for a brand-new category; it's not a registry-pattern violation.
+
+---
+
 ## Video Trimmer: stream-copy trim, always-on WebM preview proxy via blob URL
 
 The Video Trimmer (commits `b6c4422…`) is the second video tool. It trims by ffmpeg **stream copy**, and its preview is the load-bearing part — several decisions there cost real iteration and shouldn't be unwound:
