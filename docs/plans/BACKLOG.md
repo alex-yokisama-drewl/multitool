@@ -27,5 +27,4 @@ Plans and ideas not yet committed to a milestone. When an item moves into active
 
 ### Text
 
-- **Lorem ipsum generator.** Generate placeholder text. No configuration controls — just two buttons: copy and re-generate.
 - **Text diff.**
