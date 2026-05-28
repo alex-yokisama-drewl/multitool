@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { generateParagraphs } from "./generator";
 
@@ -9,6 +10,7 @@ const PARAGRAPH_COUNT = 5;
 const COPY_AFFORDANCE_MS = 1500;
 
 export function Lorem() {
+  const navigate = useNavigate();
   const [text, setText] = useState<string>(() =>
     generateParagraphs(PARAGRAPH_COUNT),
   );
@@ -22,6 +24,16 @@ export function Lorem() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") void navigate("/");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [navigate]);
 
   const regenerate = useCallback(() => {
     setText(generateParagraphs(PARAGRAPH_COUNT));

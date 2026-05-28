@@ -1,6 +1,15 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Lorem } from "./Lorem";
+
+function renderTool() {
+  return render(
+    <MemoryRouter>
+      <Lorem />
+    </MemoryRouter>,
+  );
+}
 
 // Paragraphs are rendered as separate <p> elements, so the underlying text
 // state can't be read off `.textContent` (which strips the blank lines).
@@ -23,13 +32,13 @@ describe("Lorem", () => {
   });
 
   it("renders 5 paragraphs on mount", () => {
-    render(<Lorem />);
+    renderTool();
     expect(renderedParagraphs()).toHaveLength(5);
     expect(renderedParagraphs().every((p) => p.length > 0)).toBe(true);
   });
 
   it("Regenerate produces different text", () => {
-    render(<Lorem />);
+    renderTool();
     const before = renderedParagraphs().join("\n\n");
     fireEvent.click(screen.getByRole("button", { name: /regenerate/i }));
     const after = renderedParagraphs().join("\n\n");
@@ -37,7 +46,7 @@ describe("Lorem", () => {
   });
 
   it("Copy writes the rendered text (paragraphs joined by blank lines) and shows a 'Copied' affordance", async () => {
-    render(<Lorem />);
+    renderTool();
     const expected = renderedParagraphs().join("\n\n");
     fireEvent.click(screen.getByRole("button", { name: /^copy$/i }));
 
@@ -49,7 +58,7 @@ describe("Lorem", () => {
 
   it("falls back to 'Copy failed' when clipboard.writeText rejects", async () => {
     writeText.mockRejectedValueOnce(new Error("denied"));
-    render(<Lorem />);
+    renderTool();
     fireEvent.click(screen.getByRole("button", { name: /^copy$/i }));
     await screen.findByRole("button", { name: /copy failed/i });
   });
