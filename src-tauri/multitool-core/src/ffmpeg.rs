@@ -431,12 +431,20 @@ fn parse_video_stream_line(stderr: &str) -> Option<VideoStreamParams> {
             }
         });
 
-        // Dimensions slot — `1920x1080`. May land in field 2 (typical) or
-        // later when an extra slot precedes it (rare). Scan for the first
-        // `WxH`-shaped field.
+        // Dimensions slot — `1920x1080`, sometimes trailed by a bracketed
+        // `[SAR 1:1 DAR 1:1]` aspect-ratio annotation. May land in field
+        // 2 (typical) or later when an extra slot precedes it (rare).
+        // Scan for the first `WxH`-shaped field and parse only the
+        // leading-digit run on each side.
         let (width, height) = fields.iter().skip(2).find_map(|f| {
             let (w, h) = f.trim().split_once('x')?;
-            Some((w.trim().parse::<u32>().ok()?, h.trim().parse::<u32>().ok()?))
+            let w_digits: String = w.trim().chars().take_while(char::is_ascii_digit).collect();
+            let h_digits: String = h
+                .trim_start()
+                .chars()
+                .take_while(char::is_ascii_digit)
+                .collect();
+            Some((w_digits.parse::<u32>().ok()?, h_digits.parse::<u32>().ok()?))
         })?;
 
         return Some(VideoStreamParams {
@@ -697,6 +705,21 @@ mod tests {
         let params = parse_video_stream_line(stderr).expect("parse av1");
         assert_eq!(params.codec, "av1");
         assert_eq!(params.pix_fmt.as_deref(), Some("yuv420p"));
+    }
+
+    #[test]
+    fn parses_video_line_with_sar_dar_aspect_annotation() {
+        // ffmpeg appends `[SAR W:H DAR W:H]` to the dimensions slot
+        // whenever the sample-aspect-ratio is set (which is most clips
+        // out of libx264 — even our synth test fixtures).
+        let stderr =
+            "  Stream #0:0[0x1](und): Video: h264 (High 4:4:4 Predictive) (avc1 / 0x31637661), \
+            yuv444p(progressive), 64x64 [SAR 1:1 DAR 1:1], 66 kb/s, 10 fps\n";
+        let params = parse_video_stream_line(stderr).expect("parse with SAR/DAR");
+        assert_eq!(params.codec, "h264");
+        assert_eq!(params.pix_fmt.as_deref(), Some("yuv444p"));
+        assert_eq!(params.width, 64);
+        assert_eq!(params.height, 64);
     }
 
     #[test]

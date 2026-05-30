@@ -3,14 +3,14 @@
 //! Mirrors [`super::super::audio_trimmer::job`] (one file in, one file
 //! out, no skip-and-continue lane) but drives the ffmpeg-based
 //! [`super::convert`] instead of a PCM round-trip. The single mid-run
-//! `FileProgress` variant streams the copy's 0..=1 fraction, sourced from
-//! the ffmpeg shim's `out_time_us / trim_duration` math — the same shape
-//! the Video Format Converter uses.
+//! `FileProgress` variant streams the re-encode's 0..=1 fraction,
+//! sourced from the ffmpeg shim's `out_time_us / trim_duration` math —
+//! the same shape the Video Format Converter uses.
 //!
 //! Cancellation:
 //! - Before any work and again right after the `Started` emit (before the
 //!   ffmpeg spawn) → returns `AppError::Cancelled`, nothing written.
-//! - Mid-copy → [`crate::ffmpeg::run`] kills the child and returns
+//! - Mid-encode → [`crate::ffmpeg::run`] kills the child and returns
 //!   `AppError::Cancelled`, which propagates from [`super::convert`],
 //!   which has already unlinked the partial output.
 
@@ -26,16 +26,16 @@ use crate::error::{AppError, AppResult};
 
 /// Per-file event streamed to the UI as the trim progresses.
 ///
-/// `Started` fires once when the copy begins; zero or more `FileProgress`
-/// follow with the mid-copy 0..=1 fraction (throttled to ~4/sec by the
-/// ffmpeg shim). On success the job resolves with [`JobResult`]; on
-/// failure it rejects with an `AppError`.
+/// `Started` fires once when the re-encode begins; zero or more
+/// `FileProgress` follow with the mid-encode 0..=1 fraction (throttled
+/// to ~4/sec by the ffmpeg shim). On success the job resolves with
+/// [`JobResult`]; on failure it rejects with an `AppError`.
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum Progress {
     /// About to trim the picked file. Emitted once.
     Started { source: PathBuf },
-    /// Mid-copy progress. `fraction` is in `[0.0, 1.0]`.
+    /// Mid-encode progress. `fraction` is in `[0.0, 1.0]`.
     FileProgress { source: PathBuf, fraction: f64 },
 }
 
@@ -81,8 +81,9 @@ where
     })?;
 
     // Cancel between Started and the ffmpeg spawn keeps the cancel path
-    // deterministic (a stream copy can otherwise finish before the shim's
-    // read loop notices the token).
+    // deterministic — a re-encode of a sub-second window on a tiny test
+    // clip can otherwise finish before the shim's read loop notices the
+    // token.
     if cancel.is_cancelled() {
         return Err(AppError::Cancelled);
     }
