@@ -222,13 +222,18 @@ fn select_video_encoder_flags(codec: &str) -> &'static [&'static str] {
 /// and rounds out anything mp3-or-older the table doesn't list.
 fn select_audio_encoder_flags(codec: &str) -> &'static [&'static str] {
     match codec {
-        "aac" => &["-c:a", "aac", "-b:a", "192k"],
+        // AAC at 128k is perceptually transparent for stereo music and
+        // avoids the ~4× over-encode penalty seen against low-bitrate
+        // phone-capture sources (smoke #1 caught a 44k-source → 191k-out
+        // case). AC3 stays at 192k — it's typically a surround/5.1
+        // format where cutting further would degrade the mix.
+        "aac" => &["-c:a", "aac", "-b:a", "128k"],
         "opus" => &["-c:a", "libopus", "-b:a", "128k"],
         "mp3" => &["-c:a", "libmp3lame", "-q:a", "2"],
         "flac" => &["-c:a", "flac"],
         "vorbis" => &["-c:a", "libvorbis", "-q:a", "5"],
         "ac3" => &["-c:a", "ac3", "-b:a", "192k"],
-        _ => &["-c:a", "aac", "-b:a", "192k"],
+        _ => &["-c:a", "aac", "-b:a", "128k"],
     }
 }
 

@@ -50,16 +50,19 @@ and a learning-project trimmer doesn't have a "speed matters" user.
 - **Audio codec mirrored** similarly:
   | Source audio codec | Encoder | Quality flag |
   | --- | --- | --- |
-  | aac | `aac` | `-b:a 192k` |
+  | aac | `aac` | `-b:a 128k` |
   | opus | `libopus` | `-b:a 128k` |
   | mp3 | `libmp3lame` | `-q:a 2` |
   | flac | `flac` | (lossless, no flag) |
   | vorbis | `libvorbis` | `-q:a 5` |
   | ac3 | `ac3` | `-b:a 192k` |
-  | anything else | `aac` fallback | `-b:a 192k` |
+  | anything else | `aac` fallback | `-b:a 128k` |
 
   Source bitrate isn't mirrored exactly (banners often omit it for opus/flac); the table
-  uses a one-step-up-from-typical default per codec.
+  uses a one-step-up-from-typical default per codec. AAC was originally 192k, dropped to
+  128k after smoke #1 caught a 4× over-encode penalty on a 44 kbps phone-capture source.
+  AC3 stays at 192k because it's typically a surround/5.1 format where cutting further
+  would degrade the mix.
 - **Container preserved.** Same as v1 — the output extension matches the source extension.
   ffmpeg picks the muxer from the extension; mp4/mkv/mov/webm all work as round-trip targets
   for the matched codecs above.
@@ -207,9 +210,9 @@ unaffected — same opts in, same `JobResult` out.
 | 1 | `docs(video-trimmer): brief for frame-accurate re-engine` | done `247907f` — first commit on `feat/video-trim-frame-accurate`. Encoder check ran clean on linux except libsvtav1; av1 row swapped to libaom-av1 in-doc. As in the prior trimmer doc, each row records the **previous** commit's SHA — a commit can't carry its own hash. |
 | 2 | `feat(ffmpeg): probe_video_stream_params + probe_audio_stream_params + parser tests` | done `8fab57f` — VideoStreamParams + AudioStreamParams structs; paren-aware comma split so HDR color tags embedded in pixfmt parens (`yuv420p10le(tv, bt2020nc/bt2020/smpte2084)`) don't break the parser. Lowercases codec on the way out so the mirror table key matches regardless of banner case. |
 | 3 | `feat(video-trimmer): codec-matched frame-accurate re-encode engine` (was: 3 + 4, merged — clippy `dead_code` blocks add-only helpers from landing alone) | done `b3c6442` — SAR/DAR bracket trailing the dimensions slot caught against real synth clips; WxH parser now extracts leading-digit run on each side. No IPC-shape change → no frontend wiring needed beyond the cosmetic copy in #4. |
-| 4 | `fix(video-trimmer): drop keyframe-snap copy from tile description + UI + IPC wrapper docstring` | pending |
-| — | **STOP — manual smoke session #1** (long-GOP h264 mp4, hevc mp4, vp9 webm; cancel mid-encode; invalid-range; multi-audio-track mkv) | — |
-| 5 | `fix(video-trimmer): smoke fixes (TBD per session)` | pending |
+| 4 | `fix(video-trimmer): drop keyframe-snap copy from tile description + UI + IPC wrapper docstring` | done `2bcc6c7` — three surfaces had stream-copy / keyframe language: the dashboard tile description, the in-tool header copy, and the IPC wrapper's Progress docstring. No test assertions referenced them, so cosmetic-only. |
+| — | **smoke #1 passed**: frame-accurate cut confirmed on both an OBS screen recording and a smartphone clip. Parameter shifts (video bitrate drop on simple content, VFR→CFR 12.5→30 fps, AAC at 192k vs source's 44k) all explained as designed CRF + table-default behavior. One worthwhile tweak surfaced: AAC default 192k → 128k (#5 below). | — |
+| 5 | `fix(video-trimmer): drop AAC default 192k → 128k` (smoke-fix) | pending |
 | 6 | `test(video-trimmer): refresh Playwright happy-path expectations` | pending |
 | 7 | `chore(video-trimmer): ship — DECISIONS entry, drop working doc` | pending |
 
