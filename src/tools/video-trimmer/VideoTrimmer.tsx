@@ -302,10 +302,9 @@ export function VideoTrimmer() {
       <header>
         <h1 className="text-xl font-semibold">Video Trimmer</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Trim a video to a range without re-encoding. Output preserves the
-          source format and lands next to the input as{" "}
-          <code>{"{stem}_trimmed.{ext}"}</code>. Cuts snap to the nearest
-          keyframe, so the start may land slightly before your mark.
+          Trim a video to a frame-accurate range. Output preserves the source
+          codec and container, and lands next to the input as{" "}
+          <code>{"{stem}_trimmed.{ext}"}</code>.
         </p>
       </header>
 

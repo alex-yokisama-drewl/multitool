@@ -21,8 +21,9 @@ export interface Opts {
 
 // Mirrors `multitool_core::tools::video_trimmer::Progress` —
 // `#[serde(tag = "kind", rename_all = "kebab-case")]`. Single file, so no
-// index/total: `started` once, then `file-progress` with the mid-copy
-// 0..=1 fraction (a stream copy is usually near-instant, so few or none).
+// index/total: `started` once, then `file-progress` with the mid-encode
+// 0..=1 fraction. The trim is a codec-matched full re-encode, so even a
+// short window typically produces several progress samples.
 export type Progress =
   | { kind: "started"; source: string }
   | { kind: "file-progress"; source: string; fraction: number };
