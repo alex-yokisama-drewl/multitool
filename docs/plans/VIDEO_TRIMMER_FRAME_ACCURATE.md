@@ -205,12 +205,12 @@ unaffected — same opts in, same `JobResult` out.
 | # | Commit | Status |
 | --- | --- | --- |
 | 1 | `docs(video-trimmer): brief for frame-accurate re-engine` | done `247907f` — first commit on `feat/video-trim-frame-accurate`. Encoder check ran clean on linux except libsvtav1; av1 row swapped to libaom-av1 in-doc. As in the prior trimmer doc, each row records the **previous** commit's SHA — a commit can't carry its own hash. |
-| 2 | `feat(ffmpeg): probe_video_stream_params + probe_audio_stream_params + parser tests` | pending |
-| 3 | `feat(video-trimmer): codec-mirror tables + frame-accurate args (convert.rs)` | pending |
-| 4 | `feat(video-trimmer): wire probe → convert (codec-matched re-encode end-to-end)` | pending |
+| 2 | `feat(ffmpeg): probe_video_stream_params + probe_audio_stream_params + parser tests` | done `8fab57f` — VideoStreamParams + AudioStreamParams structs; paren-aware comma split so HDR color tags embedded in pixfmt parens (`yuv420p10le(tv, bt2020nc/bt2020/smpte2084)`) don't break the parser. Lowercases codec on the way out so the mirror table key matches regardless of banner case. |
+| 3 | `feat(video-trimmer): codec-matched frame-accurate re-encode engine` (was: 3 + 4, merged — clippy `dead_code` blocks add-only helpers from landing alone) | pending |
+| 4 | `fix(video-trimmer): drop keyframe-snap copy from tile description + UI + IPC wrapper docstring` | pending |
 | — | **STOP — manual smoke session #1** (long-GOP h264 mp4, hevc mp4, vp9 webm; cancel mid-encode; invalid-range; multi-audio-track mkv) | — |
 | 5 | `fix(video-trimmer): smoke fixes (TBD per session)` | pending |
-| 6 | `test(video-trimmer): refresh Playwright happy-path expectations` (drop keyframe-snap caveat copy if present) | pending |
+| 6 | `test(video-trimmer): refresh Playwright happy-path expectations` | pending |
 | 7 | `chore(video-trimmer): ship — DECISIONS entry, drop working doc` | pending |
 
 ### Step 1 prerequisite — confirm bundled-ffmpeg encoder coverage
