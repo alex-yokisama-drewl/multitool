@@ -204,7 +204,7 @@ unaffected — same opts in, same `JobResult` out.
 
 | # | Commit | Status |
 | --- | --- | --- |
-| 1 | `docs(video-trimmer): brief for frame-accurate re-engine` | pending |
+| 1 | `docs(video-trimmer): brief for frame-accurate re-engine` | done `247907f` — first commit on `feat/video-trim-frame-accurate`. Encoder check ran clean on linux except libsvtav1; av1 row swapped to libaom-av1 in-doc. As in the prior trimmer doc, each row records the **previous** commit's SHA — a commit can't carry its own hash. |
 | 2 | `feat(ffmpeg): probe_video_stream_params + probe_audio_stream_params + parser tests` | pending |
 | 3 | `feat(video-trimmer): codec-mirror tables + frame-accurate args (convert.rs)` | pending |
 | 4 | `feat(video-trimmer): wire probe → convert (codec-matched re-encode end-to-end)` | pending |
