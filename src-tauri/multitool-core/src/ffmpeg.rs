@@ -11,11 +11,12 @@
 //!    streams throttled [`FfmpegProgress`] events to the supplied callback,
 //!    keeps the last ~64 stderr lines in a ring buffer for failure detail,
 //!    and kills + reaps the child if the supplied [`CancellationToken`] fires.
-//! 3. **[`probe_duration_secs`] / [`probe_audio_stream_count`].** Invoke
-//!    `ffmpeg -i <path>` and parse the `Duration:` / `Stream #...: Audio:`
-//!    lines from stderr respectively. No `ffprobe` is bundled (saves ~50–80
-//!    MB per installed bundle); both line formats have been stable in
-//!    ffmpeg for over a decade.
+//! 3. **[`probe_duration_secs`] / [`probe_audio_stream_count`] /
+//!    [`probe_video_stream_params`] / [`probe_audio_stream_params`].**
+//!    Invoke `ffmpeg -i <path>` and parse the `Duration:` / `Stream #...:
+//!    Video:` / `Stream #...: Audio:` lines from stderr. No `ffprobe` is
+//!    bundled (saves ~50–80 MB per installed bundle); all four line
+//!    formats have been stable in ffmpeg for over a decade.
 //!
 //! The shim is the only place in the tree that knows ffmpeg's CLI shape.
 //! Per-tool code (Video Format Converter today; the rest of the video
@@ -228,6 +229,93 @@ pub fn probe_duration_secs(path: &Path) -> Result<f64, AppError> {
     })
 }
 
+/// Source video-stream parameters parsed from the first `Stream #...:
+/// Video:` line in `ffmpeg -i <path>`'s stderr. Drives the Video
+/// Trimmer's codec-matched re-encode — `codec` selects the encoder
+/// (`h264` → `libx264`, `hevc` → `libx265`, …) and `pix_fmt` is mirrored
+/// directly to the encoder's `-pix_fmt` flag so 10-bit / HDR-adjacent
+/// sources don't silently downgrade to yuv420p.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VideoStreamParams {
+    /// Lowercase ffmpeg codec name as it appears in the banner: `h264`,
+    /// `hevc`, `vp9`, `av1`, `vp8`, `mpeg4`, `mpeg2video`, `wmv3`, …
+    pub codec: String,
+    /// Pixel format string, e.g. `yuv420p` / `yuv420p10le` / `yuv444p`.
+    /// `None` when the banner's pixfmt slot is malformed (very rare —
+    /// some exotic containers).
+    pub pix_fmt: Option<String>,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// Source audio-stream parameters parsed from the FIRST `Stream #...:
+/// Audio:` line. Multi-track sources (5.1 + commentary + dub) drop to
+/// track 0's codec for the mirror — re-encoding three tracks with three
+/// different encoders isn't worth the complexity for a v1 trimmer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AudioStreamParams {
+    /// Lowercase ffmpeg codec name: `aac`, `opus`, `mp3`, `flac`,
+    /// `vorbis`, `ac3`, …
+    pub codec: String,
+    /// Sample rate in Hz, when the banner reports one. `None` when the
+    /// rate slot is `N/A` or missing.
+    pub sample_rate: Option<u32>,
+    /// Channel layout as ffmpeg prints it: `mono`, `stereo`, `5.1`,
+    /// `7.1`, …
+    pub channels: Option<String>,
+}
+
+/// Probe the first video stream's params. Errors:
+/// - `AppError::ProcessingFailed` if no `Stream #...: Video:` line is
+///   present (input has no video, or ffmpeg can't read the container).
+pub fn probe_video_stream_params(path: &Path) -> Result<VideoStreamParams, AppError> {
+    let bin = binary_path();
+    let mut command = Command::new(&bin);
+    command
+        .arg("-hide_banner")
+        .arg("-i")
+        .arg(path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    suppress_console_window(&mut command);
+
+    let output = command.output().map_err(|err| AppError::ProcessingFailed {
+        detail: format!("failed to spawn ffmpeg at {}: {err}", bin.display()),
+    })?;
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    parse_video_stream_line(&stderr).ok_or_else(|| AppError::ProcessingFailed {
+        detail: format!(
+            "ffmpeg -i {} did not report a Video stream line",
+            path.display()
+        ),
+    })
+}
+
+/// Probe the first audio stream's params. Returns `Ok(None)` (NOT an
+/// error) for sources with no audio — a silent video is a valid input
+/// for the Video Trimmer's codec-matched re-encode.
+pub fn probe_audio_stream_params(path: &Path) -> Result<Option<AudioStreamParams>, AppError> {
+    let bin = binary_path();
+    let mut command = Command::new(&bin);
+    command
+        .arg("-hide_banner")
+        .arg("-i")
+        .arg(path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    suppress_console_window(&mut command);
+
+    let output = command.output().map_err(|err| AppError::ProcessingFailed {
+        detail: format!("failed to spawn ffmpeg at {}: {err}", bin.display()),
+    })?;
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    Ok(parse_audio_stream_line(&stderr))
+}
+
 /// Probe how many audio streams a media file declares, by parsing
 /// `ffmpeg -i <path>`'s stderr for `Stream #...: Audio: ...` lines.
 /// Returns 0 for sources with no audio (e.g. a silent video).
@@ -308,6 +396,114 @@ fn parse_audio_stream_count(stderr: &str) -> u32 {
         }
     }
     count
+}
+
+/// Parse the FIRST `Stream #...: Video: <codec> [(profile)], <pixfmt>[(color
+/// tags)], <W>x<H>, …` line out of ffmpeg's stderr. Tolerates the language
+/// tag in `(...)` and the mpegts hex stream id in `[0xNNNN]` (both optional)
+/// before the `: Video: ` marker. Returns `None` if no video stream line is
+/// present, or if the codec/dimensions slots are unparseable.
+fn parse_video_stream_line(stderr: &str) -> Option<VideoStreamParams> {
+    for line in stderr.lines() {
+        let trimmed = line.trim_end_matches('\r').trim();
+        if !trimmed.starts_with("Stream #") {
+            continue;
+        }
+        let Some(rest) = trimmed.split(": Video:").nth(1) else {
+            continue;
+        };
+        let fields = split_top_level_commas(rest.trim());
+        let codec_field = fields.first()?;
+        // First whitespace-separated token: the codec name. Anything that
+        // follows in parens is the profile/level (`h264 (High)` → `h264`).
+        let codec = codec_field.split_whitespace().next()?.to_ascii_lowercase();
+
+        // Pixfmt may carry trailing `(tv, bt709, ...)` color tags — strip
+        // them at the first `(`. If the second field doesn't look like a
+        // pixfmt (e.g. a stream missing the slot), return None for pix_fmt.
+        let pix_fmt = fields.get(1).and_then(|f| {
+            let raw = f.trim();
+            let head = raw.split('(').next()?.trim();
+            if head.is_empty() {
+                None
+            } else {
+                Some(head.to_string())
+            }
+        });
+
+        // Dimensions slot — `1920x1080`. May land in field 2 (typical) or
+        // later when an extra slot precedes it (rare). Scan for the first
+        // `WxH`-shaped field.
+        let (width, height) = fields.iter().skip(2).find_map(|f| {
+            let (w, h) = f.trim().split_once('x')?;
+            Some((w.trim().parse::<u32>().ok()?, h.trim().parse::<u32>().ok()?))
+        })?;
+
+        return Some(VideoStreamParams {
+            codec,
+            pix_fmt,
+            width,
+            height,
+        });
+    }
+    None
+}
+
+/// Parse the FIRST `Stream #...: Audio: <codec> [(profile)], <rate> Hz,
+/// <layout>, …` line out of ffmpeg's stderr. Sources with no audio
+/// stream return `None`. Multi-track sources return the FIRST track —
+/// see the [`AudioStreamParams`] doc for the codec-mirror rationale.
+fn parse_audio_stream_line(stderr: &str) -> Option<AudioStreamParams> {
+    for line in stderr.lines() {
+        let trimmed = line.trim_end_matches('\r').trim();
+        if !trimmed.starts_with("Stream #") {
+            continue;
+        }
+        let Some(rest) = trimmed.split(": Audio:").nth(1) else {
+            continue;
+        };
+        let fields = split_top_level_commas(rest.trim());
+        let codec_field = fields.first()?;
+        let codec = codec_field.split_whitespace().next()?.to_ascii_lowercase();
+
+        // Sample rate slot: "48000 Hz" / "44100 Hz" / "N/A".
+        let sample_rate = fields.get(1).and_then(|f| {
+            let raw = f.trim();
+            let num = raw.strip_suffix("Hz").unwrap_or(raw).trim();
+            num.parse::<u32>().ok()
+        });
+
+        let channels = fields.get(2).map(|f| f.trim().to_string());
+
+        return Some(AudioStreamParams {
+            codec,
+            sample_rate,
+            channels,
+        });
+    }
+    None
+}
+
+/// Split `s` on commas at paren-depth 0. Tolerates both `(...)` (language
+/// tags / color tags / profile parens) and `[...]` (mpegts hex stream id)
+/// nesting. Trims whitespace around each field.
+fn split_top_level_commas(s: &str) -> Vec<&str> {
+    let mut depth: i32 = 0;
+    let mut start = 0usize;
+    let mut out: Vec<&str> = Vec::new();
+    for (i, c) in s.char_indices() {
+        match c {
+            '(' | '[' => depth = depth.saturating_add(1),
+            ')' | ']' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                out.push(s[start..i].trim());
+                start = i + c.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    out.push(s[start..].trim());
+    out
 }
 
 /// On Windows, ensure spawning a child process doesn't pop a console window
@@ -457,5 +653,170 @@ mod tests {
     #[test]
     fn audio_count_zero_on_empty_input() {
         assert_eq!(parse_audio_stream_count(""), 0);
+    }
+
+    #[test]
+    fn parses_video_line_h264_yuv420p() {
+        let stderr = "Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'clip.mp4':\n  \
+            Duration: 00:00:10.00, start: 0.000000, bitrate: 1024 kb/s\n  \
+            Stream #0:0(und): Video: h264 (High), yuv420p, 1280x720, 1024 kb/s, 30 fps\n  \
+            Stream #0:1(und): Audio: aac (LC), 48000 Hz, stereo, fltp, 128 kb/s\n";
+        let params = parse_video_stream_line(stderr).expect("parse video");
+        assert_eq!(params.codec, "h264");
+        assert_eq!(params.pix_fmt.as_deref(), Some("yuv420p"));
+        assert_eq!(params.width, 1280);
+        assert_eq!(params.height, 720);
+    }
+
+    #[test]
+    fn parses_video_line_hevc_10bit_with_hdr_color_tags() {
+        // 10-bit pixfmt + HDR color metadata in parens. The paren-aware
+        // splitter must not break the pixfmt slot on the embedded comma.
+        let stderr = "  Stream #0:0(eng): Video: hevc (Main 10), \
+            yuv420p10le(tv, bt2020nc/bt2020/smpte2084), 3840x2160, 15000 kb/s\n";
+        let params = parse_video_stream_line(stderr).expect("parse hevc 10-bit");
+        assert_eq!(params.codec, "hevc");
+        assert_eq!(params.pix_fmt.as_deref(), Some("yuv420p10le"));
+        assert_eq!(params.width, 3840);
+        assert_eq!(params.height, 2160);
+    }
+
+    #[test]
+    fn parses_video_line_vp9_no_profile() {
+        let stderr = "  Stream #0:0(und): Video: vp9, yuv420p(tv, bt709), 1920x1080, 25 fps\n";
+        let params = parse_video_stream_line(stderr).expect("parse vp9");
+        assert_eq!(params.codec, "vp9");
+        assert_eq!(params.pix_fmt.as_deref(), Some("yuv420p"));
+        assert_eq!(params.width, 1920);
+        assert_eq!(params.height, 1080);
+    }
+
+    #[test]
+    fn parses_video_line_av1() {
+        let stderr = "  Stream #0:0: Video: av1 (Main), yuv420p, 1920x1080, 30 fps\n";
+        let params = parse_video_stream_line(stderr).expect("parse av1");
+        assert_eq!(params.codec, "av1");
+        assert_eq!(params.pix_fmt.as_deref(), Some("yuv420p"));
+    }
+
+    #[test]
+    fn parses_video_line_handles_mpegts_hex_stream_id() {
+        let stderr = "  Stream #0:0[0x100]: Video: h264, yuv420p, 1920x1080, 8000 kb/s\n";
+        let params = parse_video_stream_line(stderr).expect("parse mpegts h264");
+        assert_eq!(params.codec, "h264");
+        assert_eq!(params.width, 1920);
+        assert_eq!(params.height, 1080);
+    }
+
+    #[test]
+    fn parses_video_line_uppercase_codec_name_normalized() {
+        // mxf / wmv banners can print the codec name in mixed case (e.g.
+        // `MPEG2VIDEO`). The mirror table keys on lowercase ffmpeg names.
+        let stderr = "  Stream #0:0: Video: MPEG2VIDEO, yuv420p, 720x576\n";
+        let params = parse_video_stream_line(stderr).expect("parse mpeg2");
+        assert_eq!(params.codec, "mpeg2video");
+    }
+
+    #[test]
+    fn video_line_missing_returns_none() {
+        assert!(parse_video_stream_line("").is_none());
+        // Audio-only file — no video stream line.
+        assert!(parse_video_stream_line(
+            "Input #0, mp3, from 'song.mp3':\n  \
+                Duration: 00:03:00.00\n  \
+                Stream #0:0: Audio: mp3, 44100 Hz, stereo\n",
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn video_line_handles_crlf() {
+        let stderr = "  Stream #0:0(und): Video: h264, yuv420p, 1280x720\r\n";
+        let params = parse_video_stream_line(stderr).expect("parse with crlf");
+        assert_eq!(params.codec, "h264");
+    }
+
+    #[test]
+    fn parses_audio_line_aac_stereo() {
+        let stderr = "  Stream #0:0(und): Video: h264, yuv420p, 1280x720\n  \
+            Stream #0:1(und): Audio: aac (LC), 48000 Hz, stereo, fltp, 128 kb/s\n";
+        let params = parse_audio_stream_line(stderr).expect("parse aac");
+        assert_eq!(params.codec, "aac");
+        assert_eq!(params.sample_rate, Some(48_000));
+        assert_eq!(params.channels.as_deref(), Some("stereo"));
+    }
+
+    #[test]
+    fn parses_audio_line_opus_without_bitrate_slot() {
+        // opus / flac frequently omit the trailing `, N kb/s` slot.
+        let stderr = "  Stream #0:1: Audio: opus, 48000 Hz, stereo, fltp\n";
+        let params = parse_audio_stream_line(stderr).expect("parse opus");
+        assert_eq!(params.codec, "opus");
+        assert_eq!(params.sample_rate, Some(48_000));
+        assert_eq!(params.channels.as_deref(), Some("stereo"));
+    }
+
+    #[test]
+    fn parses_audio_line_flac_lossless() {
+        let stderr = "  Stream #0:1: Audio: flac, 96000 Hz, 5.1, s32 (24 bit)\n";
+        let params = parse_audio_stream_line(stderr).expect("parse flac");
+        assert_eq!(params.codec, "flac");
+        assert_eq!(params.sample_rate, Some(96_000));
+        assert_eq!(params.channels.as_deref(), Some("5.1"));
+    }
+
+    #[test]
+    fn audio_line_takes_first_track_when_multiple_present() {
+        let stderr = "  Stream #0:0(eng): Video: h264, yuv420p, 1920x1080\n  \
+            Stream #0:1(eng): Audio: ac3, 48000 Hz, 5.1, fltp, 448 kb/s\n  \
+            Stream #0:2(jpn): Audio: aac, 48000 Hz, stereo, fltp, 160 kb/s\n";
+        let params = parse_audio_stream_line(stderr).expect("parse first audio");
+        assert_eq!(params.codec, "ac3");
+        assert_eq!(params.channels.as_deref(), Some("5.1"));
+    }
+
+    #[test]
+    fn audio_line_absent_returns_none() {
+        let stderr = "  Stream #0:0: Video: h264, yuv420p, 1280x720\n";
+        assert!(parse_audio_stream_line(stderr).is_none());
+    }
+
+    #[test]
+    fn audio_line_handles_mpegts_hex_stream_id() {
+        let stderr = "  Stream #0:1[0x101](eng): Audio: ac3, 48000 Hz, 5.1, fltp\n";
+        let params = parse_audio_stream_line(stderr).expect("parse mpegts audio");
+        assert_eq!(params.codec, "ac3");
+        assert_eq!(params.channels.as_deref(), Some("5.1"));
+    }
+
+    #[test]
+    fn audio_line_handles_crlf() {
+        let stderr = "  Stream #0:1(und): Audio: aac, 48000 Hz, stereo\r\n";
+        let params = parse_audio_stream_line(stderr).expect("parse with crlf");
+        assert_eq!(params.codec, "aac");
+    }
+
+    #[test]
+    fn split_top_level_commas_respects_paren_depth() {
+        // Color tags inside the pixfmt parens must NOT cause a split.
+        let fields = split_top_level_commas(
+            "hevc (Main 10), yuv420p10le(tv, bt2020nc/bt2020), 3840x2160, 15000 kb/s",
+        );
+        assert_eq!(
+            fields,
+            vec![
+                "hevc (Main 10)",
+                "yuv420p10le(tv, bt2020nc/bt2020)",
+                "3840x2160",
+                "15000 kb/s",
+            ]
+        );
+    }
+
+    #[test]
+    fn split_top_level_commas_respects_bracket_depth() {
+        // mpegts `[0xNNNN]` brackets — same rule.
+        let fields = split_top_level_commas("h264 [0x100, 0x200], yuv420p, 1280x720");
+        assert_eq!(fields, vec!["h264 [0x100, 0x200]", "yuv420p", "1280x720"]);
     }
 }
