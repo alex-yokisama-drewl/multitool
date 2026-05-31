@@ -19,7 +19,6 @@ Plans and ideas not yet committed to a milestone. When an item moves into active
   HEIC **encode** is doubly out of scope: needs x265 (GPL + patent-encumbered).
 - **Image resize.**
 - **Image compress.**
-- **Tighter PNG re-encode for crop / resize.** The `image` crate's PNG encoder ships zlib default compression and adaptive filtering, no palette preservation, no second-pass optimization. Result: a 200×200 indexed/optimized source PNG (e.g. 1.1 KB) re-encodes as a 100×100 RGBA8 PNG at ≈ 2.6 KB after a crop or resize. Workable but visible to anyone diffing file sizes. Three options when picking this up: (a) bump the encoder to `flate2::Compression::best()` — modest win, slower; (b) add an `oxipng` post-pass behind a checkbox or as a default; (c) detect indexed PNG sources and preserve the palette through resize where possible (complex — DynamicImage decode loses the palette). (a) is the cheapest first step.
 
 ### Video
 
