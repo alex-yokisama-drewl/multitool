@@ -21,7 +21,7 @@ Plans and ideas not yet committed to a milestone. When an item moves into active
 
 ### Video
 
-- **Video compress.**
+- **Compress: scale audio bitrate with the quality slider.** v1 of Compress stream-copies audio (`-c:a copy`) so the slider only affects video bitrate. For sources that are mostly audio (podcast clips, music videos at low video bitrate) the slider has little effect on overall file size. Add a checkbox (default off) that switches the audio path from `-c:a copy` to a re-encode whose bitrate scales with the slider — e.g. AAC 64k at `slider=0` → 192k at `slider=1`, with parallel ranges for Opus / MP3 (`-q:a 7` → `-q:a 2`) / Vorbis. Backlog because v1's stream-copy gives bit-perfect audio for free; this is purely additive once smoke confirms the v1 shape.
 - **Trim: HDR color metadata pass-through.** The frame-accurate re-encode landed at `b3c6442…` mirrors codec + pixfmt + audio codec but doesn't read or pass through the `color_primaries` / `color_trc` / `colorspace` triplet (bt2020 / smpte2084 / bt2020nc on real HDR sources). Result: an HDR input round-trips as SDR-tagged after re-encode — a visible regression on HDR displays. Fix: extend [`ffmpeg::probe_video_stream_params`](../../src-tauri/multitool-core/src/ffmpeg.rs) to parse the `(tv, bt2020nc/bt2020/smpte2084)` annotation that already lives in the pixfmt-paren slot, then thread `-color_primaries` / `-color_trc` / `-colorspace` through [`build_reencode_args`](../../src-tauri/multitool-core/src/tools/video_trimmer/convert.rs). Defer until a real HDR clip is in the smoke-test rotation (none today). Decision context in [DECISIONS.md → "Video Trimmer"](../DECISIONS.md).
 
 ### Text
