@@ -26,6 +26,9 @@ pub fn register_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri
     builder.invoke_handler(tauri::generate_handler![
         crate::ipc::cancel_job,
         crate::asset_scope::allow_media_preview,
+        crate::preview_proxy::prepare_preview_proxy,
+        crate::preview_proxy::cleanup_preview_proxy,
+        crate::preview_proxy::cleanup_stale_proxies,
         crate::system::supported_raster_formats,
         audio_extractor::extract_audio,
         audio_format_converter::convert_audio_format,
@@ -38,8 +41,5 @@ pub fn register_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri
         video_format_converter::convert_video_format,
         video_trimmer::trim_video,
         video_trimmer::probe_video_duration,
-        video_trimmer::prepare_preview_proxy,
-        video_trimmer::cleanup_preview_proxy,
-        video_trimmer::cleanup_stale_proxies,
     ])
 }
