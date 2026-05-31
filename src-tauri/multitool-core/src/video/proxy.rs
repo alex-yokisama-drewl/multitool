@@ -1,10 +1,11 @@
-//! Preview-proxy transcode for the Video Trimmer.
+//! Preview-proxy transcode shared by every video tool whose UI needs to
+//! show frames from a picked source.
 //!
-//! The trimmer's player must show frames for *any* source, but the WebView
-//! can't always decode the source natively. When native playback fails,
-//! the UI asks for a **proxy**: a throwaway, web-friendly clip transcoded
-//! from the source and played in place of it. The trim itself always runs
-//! against the *original* file (see [`super::convert`]) — the proxy is
+//! The player must show frames for *any* source, but the WebView can't
+//! always decode the source natively. When native playback fails, the UI
+//! asks for a **proxy**: a throwaway, web-friendly clip transcoded from
+//! the source and played in place of it. The tool's actual work (trim,
+//! compress, …) always runs against the *original* file — the proxy is
 //! preview-only and is deleted once the user moves on.
 //!
 //! **Why WebM/VP9/Opus, not mp4/H.264:** the Linux WebView (WebKitGTK)
