@@ -16,6 +16,7 @@ pub mod audio_format_converter;
 pub mod audio_trimmer;
 pub mod image_crop;
 pub mod image_format_converter;
+pub mod image_resize;
 pub mod images_to_pdf;
 pub mod pdf_to_images;
 pub mod video_format_converter;
@@ -31,6 +32,7 @@ pub fn register_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri
         audio_trimmer::trim_audio,
         image_crop::crop_image,
         image_format_converter::convert_image_format,
+        image_resize::resize_image,
         images_to_pdf::convert_images_to_pdf,
         pdf_to_images::convert_pdf_to_images,
         video_format_converter::convert_video_format,
