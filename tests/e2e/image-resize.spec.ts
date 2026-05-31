@@ -8,9 +8,7 @@ import { expect, test } from "@playwright/test";
 // math, conditional UI, and aspect-mismatch gating are unit-covered
 // (ImageResize.test.tsx).
 
-test("resizes a picked image and surfaces the done state", async ({
-  page,
-}) => {
+test("resizes a picked image and surfaces the done state", async ({ page }) => {
   await page.goto("/#/tools/image-resize");
 
   // Idle → picked via the picker mock; the form appears once the
