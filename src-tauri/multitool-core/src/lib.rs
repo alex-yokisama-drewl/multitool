@@ -14,5 +14,6 @@ pub mod image;
 pub mod ipc;
 pub mod pdfium;
 pub mod tools;
+pub mod video;
 
 pub use error::{AppError, AppResult};
