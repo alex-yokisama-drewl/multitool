@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import { audioExtractorTool } from "./audio-extractor";
 import { audioFormatConverterTool } from "./audio-format-converter";
 import { audioTrimmerTool } from "./audio-trimmer";
+import { imageCompressTool } from "./image-compress";
 import { imageCropTool } from "./image-crop";
 import { imageFormatConverterTool } from "./image-format-converter";
 import { imageResizeTool } from "./image-resize";
@@ -56,6 +57,7 @@ export const tools: readonly Tool[] = [
   imageFormatConverterTool,
   imageCropTool,
   imageResizeTool,
+  imageCompressTool,
   imagesToPdfTool,
   pdfToImagesTool,
   audioFormatConverterTool,

@@ -31,12 +31,15 @@ describe("Dashboard", () => {
     expect(
       within(imageSection).getByRole("link", { name: /format converter/i }),
     ).toBeInTheDocument();
-    // Image section also carries the Crop + Resize tools.
+    // Image section also carries the Crop + Resize + Compress tools.
     expect(
       within(imageSection).getByRole("link", { name: /crop/i }),
     ).toBeInTheDocument();
     expect(
       within(imageSection).getByRole("link", { name: /resize/i }),
+    ).toBeInTheDocument();
+    expect(
+      within(imageSection).getByRole("link", { name: /compress/i }),
     ).toBeInTheDocument();
     expect(
       within(audioSection).getByRole("link", { name: /format converter/i }),
@@ -98,14 +101,17 @@ describe("Dashboard", () => {
         name: /format converter/i,
       }),
     ).toBeInTheDocument();
-    // Image section now carries the Format Converter + Crop + Resize.
+    // Image section now carries the Format Converter + Crop + Resize + Compress.
     expect(
       within(imageSection).getByRole("link", { name: /crop/i }),
     ).toBeInTheDocument();
     expect(
       within(imageSection).getByRole("link", { name: /resize/i }),
     ).toBeInTheDocument();
-    expect(within(imageSection).getAllByRole("link")).toHaveLength(3);
+    expect(
+      within(imageSection).getByRole("link", { name: /compress/i }),
+    ).toBeInTheDocument();
+    expect(within(imageSection).getAllByRole("link")).toHaveLength(4);
     expect(
       within(audioSection).getByRole("link", {
         name: /format converter/i,
@@ -177,6 +183,9 @@ describe("Dashboard", () => {
     const imageResize = within(imageSection).getByRole("link", {
       name: /resize/i,
     });
+    const imageCompress = within(imageSection).getByRole("link", {
+      name: /compress/i,
+    });
     const audioFormat = within(audioSection).getByRole("link", {
       name: /format converter/i,
     });
@@ -207,6 +216,7 @@ describe("Dashboard", () => {
     expect(imageFormat.getAttribute("data-tile-color")).toBe("sky");
     expect(imageCrop.getAttribute("data-tile-color")).toBe("violet");
     expect(imageResize.getAttribute("data-tile-color")).toBe("emerald");
+    expect(imageCompress.getAttribute("data-tile-color")).toBe("amber");
     expect(audioFormat.getAttribute("data-tile-color")).toBe("emerald");
     expect(audioTrimmer.getAttribute("data-tile-color")).toBe("violet");
     expect(videoFormat.getAttribute("data-tile-color")).toBe("teal");
@@ -218,6 +228,7 @@ describe("Dashboard", () => {
     // Inline style binds the CSS var so the palette in globals.css is the
     // single source of truth for the actual color value.
     expect(pdfToImages.style.backgroundColor).toBe("var(--tile-rose)");
+    expect(imageCompress.style.backgroundColor).toBe("var(--tile-amber)");
     expect(audioFormat.style.backgroundColor).toBe("var(--tile-emerald)");
     expect(audioTrimmer.style.backgroundColor).toBe("var(--tile-violet)");
     expect(videoFormat.style.backgroundColor).toBe("var(--tile-teal)");
