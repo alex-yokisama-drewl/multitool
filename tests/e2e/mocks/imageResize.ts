@@ -13,11 +13,7 @@ export type {
   ResizeHooks,
 } from "@/lib/tools/imageResize";
 
-import type {
-  JobResult,
-  Opts,
-  ResizeHooks,
-} from "@/lib/tools/imageResize";
+import type { JobResult, Opts, ResizeHooks } from "@/lib/tools/imageResize";
 
 const MOCK_OUTPUT_DIR = "/tmp/multitool-e2e";
 
