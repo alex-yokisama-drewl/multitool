@@ -35,6 +35,18 @@ The Video Trimmer (commits `b6c4422…`; engine re-cut to frame-accurate at `b3c
 
 ---
 
+## Image Resize: lock orthogonal to fit-mode, aspect compared via integer cross-multiplication
+
+The Image Resize tool (commits `fb57122…df31717`) is the third "preserve the source format" image tool, after Crop. Two non-obvious choices worth pinning:
+
+- **The lock checkbox controls input slaving, not fit-mode visibility.** A natural-feeling first cut was "lock ON → output is a clean proportional scale, so hide Fit/Background; lock OFF → reveal them". A smoke session caught the failure mode: lock OFF, user types 100×100 from a 100×50 source, then re-locks → captured ratio is 1:1 ≠ source's 2:1, and any further scale stays aspect-mismatched even with the lock ON. The decisive question is whether *target aspect equals source aspect*, regardless of how the user got there. Fit and Background gate on `aspectMismatch`; the lock is purely a UI affordance for how W and H move together.
+- **Aspect comparison is integer cross-multiplication, not float division.** `targetW × sourceH === sourceW × targetH` reaches a clean equality on cases like `100/50 == 200/100` where f64 division would false-positive only because the source happened to already be representable; with `MAX_DIM = 16384`, both products top out at ≈ 2.7×10⁸, well inside the 2⁵³ safe-integer range of JS numbers.
+- **`JPEG_REENCODE_QUALITY` (90) and `tiff_frame_count` are shared, not per-tool.** Both encode contract-level invariants of "preserve the source format" — same quality choice for any tool that re-encodes JPEG geometrically; same up-front rejection for multi-frame TIFF before decode silently drops frames. Lifted from `image_crop::convert` to [`multitool_core::image`](../src-tauri/multitool-core/src/image/mod.rs) + [`multitool_core::image::tiff`](../src-tauri/multitool-core/src/image/tiff.rs) so the resize tool consumed them without duplication. Distinct from the format converter's *user-controlled* `jpeg_quality` knob — geometry tools intentionally hide quality choice.
+- **Contain background is gated on the source format's alpha capability.** `Transparent` is rejected up-front when `fit=Contain` and the target (source) extension doesn't support alpha (JPEG / BMP); Stretch / Cover never read `background` so a stale `Transparent` choice in those modes is silently ignored, matching the front-end's hide-background-outside-Contain rule. Same gating shape as the converter's `AlphaHandling::Preserve`.
+- **Cover is fixed center-crop, no anchor knob.** Matches Photoshop's "Fill" and CSS `object-fit: cover` defaults (minus `object-position`). A focal-point UI would be useful for portrait crops, but it's a separate UX scope and `image_crop` already covers explicit-region cropping. Revisit if smoke ever calls for it.
+
+---
+
 ## Image Crop: backend-served format set, source-format preservation, reusable clamp
 
 The Image Crop tool (commits `83c83f1…`) is the second image tool and the trigger for making the encodable-raster-format set a single, backend-owned source of truth:
