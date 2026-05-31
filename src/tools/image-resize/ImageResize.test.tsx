@@ -122,7 +122,7 @@ describe("ImageResize", () => {
     expect(widthInput()).toHaveValue(100);
     expect(heightInput()).toHaveValue(50);
     expect(lockCheckbox()).toBeChecked();
-    // Lock is ON → fit selector hidden.
+    // Target aspect == source aspect → fit selector hidden.
     expect(screen.queryByText(/^fit$/i)).not.toBeInTheDocument();
   });
 
@@ -137,24 +137,67 @@ describe("ImageResize", () => {
     expect(heightInput()).toHaveValue(150);
   });
 
-  it("reveals the Fit selector when the lock is toggled OFF", async () => {
+  it("keeps Fit hidden while target aspect matches source, regardless of lock", async () => {
     renderTool();
-    await pickAndLoad(PNG_PATH, 100, 50);
+    await pickAndLoad(PNG_PATH, 100, 50); // 2:1 source
 
+    // Lock ON, natural dims → match → hidden.
+    expect(screen.queryByText(/^fit$/i)).not.toBeInTheDocument();
+
+    // Toggle lock OFF without changing W/H — still 100×50, still matches.
     fireEvent.click(lockCheckbox());
-    expect(lockCheckbox()).not.toBeChecked();
+    expect(screen.queryByText(/^fit$/i)).not.toBeInTheDocument();
+
+    // Lock ON, then scale proportionally — still 2:1, still matches.
+    fireEvent.click(lockCheckbox());
+    fireEvent.change(widthInput(), { target: { value: "300" } });
+    fireEvent.blur(widthInput());
+    expect(heightInput()).toHaveValue(150); // confirmed proportional
+    expect(screen.queryByText(/^fit$/i)).not.toBeInTheDocument();
+  });
+
+  it("reveals Fit when the target aspect differs from the source", async () => {
+    renderTool();
+    await pickAndLoad(PNG_PATH, 100, 50); // 2:1 source
+
+    // Break aspect: lock OFF, type a non-matching width.
+    fireEvent.click(lockCheckbox());
+    fireEvent.change(widthInput(), { target: { value: "300" } });
+    fireEvent.blur(widthInput());
+
     expect(screen.getByText(/^fit$/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/stretch/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/^contain$/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/cover/i)).toBeInTheDocument();
   });
 
-  it("reveals Background only when fit=Contain and lock is OFF", async () => {
+  it("keeps Fit visible after re-locking to a non-natural aspect", async () => {
+    // Source 100×50 (2:1). User goes 100×100 with lock off, then locks
+    // — captured ratio is 1:1 ≠ source aspect, so the fit picker must
+    // stay visible (the lock alone doesn't restore aspect parity).
     renderTool();
     await pickAndLoad(PNG_PATH, 100, 50);
 
-    // Lock OFF → fit shows; default fit is Contain → bg shows.
+    fireEvent.click(lockCheckbox()); // lock OFF
+    fireEvent.change(heightInput(), { target: { value: "100" } });
+    fireEvent.blur(heightInput());
+    expect(screen.getByText(/^fit$/i)).toBeInTheDocument();
+
+    // Lock back ON, capturing 1:1.
     fireEvent.click(lockCheckbox());
+    expect(lockCheckbox()).toBeChecked();
+    // Aspect still mismatched (target 1:1 vs source 2:1) → Fit stays.
+    expect(screen.getByText(/^fit$/i)).toBeInTheDocument();
+  });
+
+  it("reveals Background only when aspect differs AND fit=Contain", async () => {
+    renderTool();
+    await pickAndLoad(PNG_PATH, 100, 50);
+
+    // Break aspect → fit shows; default fit is Contain → bg shows.
+    fireEvent.click(lockCheckbox());
+    fireEvent.change(widthInput(), { target: { value: "300" } });
+    fireEvent.blur(widthInput());
     expect(screen.getByText(/^background$/i)).toBeInTheDocument();
 
     // Switch to Stretch → bg hides.
@@ -169,7 +212,10 @@ describe("ImageResize", () => {
   it("shows the Transparent background option only when source supports alpha", async () => {
     renderTool();
     await pickAndLoad(PNG_PATH, 100, 50);
-    fireEvent.click(lockCheckbox()); // lock OFF → bg visible (default Contain)
+    // Break aspect to expose the bg picker.
+    fireEvent.click(lockCheckbox());
+    fireEvent.change(widthInput(), { target: { value: "300" } });
+    fireEvent.blur(widthInput());
     // PNG supports alpha → Transparent visible.
     expect(screen.getByLabelText(/transparent/i)).toBeInTheDocument();
   });
@@ -177,7 +223,10 @@ describe("ImageResize", () => {
   it("hides Transparent background for JPEG sources", async () => {
     renderTool();
     await pickAndLoad(JPG_PATH, 100, 50);
-    fireEvent.click(lockCheckbox()); // lock OFF → bg visible
+    // Break aspect to expose the bg picker.
+    fireEvent.click(lockCheckbox());
+    fireEvent.change(widthInput(), { target: { value: "300" } });
+    fireEvent.blur(widthInput());
     // JPEG can't carry alpha → Transparent hidden.
     expect(screen.queryByLabelText(/transparent/i)).not.toBeInTheDocument();
     expect(screen.getByLabelText(/^white$/i)).toBeInTheDocument();
@@ -201,13 +250,13 @@ describe("ImageResize", () => {
     renderTool();
     await pickAndLoad(PNG_PATH, 100, 50);
 
-    // Lock OFF, fit=Stretch, bg=black, dims arbitrary.
+    // Break aspect first so the Fit picker is visible, then pick Stretch.
     fireEvent.click(lockCheckbox());
-    fireEvent.click(screen.getByLabelText(/stretch/i));
     fireEvent.change(widthInput(), { target: { value: "300" } });
     fireEvent.blur(widthInput());
     fireEvent.change(heightInput(), { target: { value: "200" } });
     fireEvent.blur(heightInput());
+    fireEvent.click(screen.getByLabelText(/stretch/i));
 
     resizeMock.mockResolvedValueOnce(okResult);
     fireEvent.click(screen.getByRole("button", { name: /^resize$/i }));
