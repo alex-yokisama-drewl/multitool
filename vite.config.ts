@@ -48,6 +48,10 @@ const e2eAliases: Record<string, string> = e2e
         import.meta.dirname,
         "./tests/e2e/mocks/imageCrop.ts",
       ),
+      "@/lib/tools/imageResize": path.resolve(
+        import.meta.dirname,
+        "./tests/e2e/mocks/imageResize.ts",
+      ),
       "@/lib/audioPreview": path.resolve(
         import.meta.dirname,
         "./tests/e2e/mocks/audioPreview.ts",
