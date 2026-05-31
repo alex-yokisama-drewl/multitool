@@ -19,6 +19,7 @@ pub mod image_format_converter;
 pub mod image_resize;
 pub mod images_to_pdf;
 pub mod pdf_to_images;
+pub mod video_compress;
 pub mod video_format_converter;
 pub mod video_trimmer;
 
@@ -38,6 +39,7 @@ pub fn register_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri
         image_resize::resize_image,
         images_to_pdf::convert_images_to_pdf,
         pdf_to_images::convert_pdf_to_images,
+        video_compress::compress_video,
         video_format_converter::convert_video_format,
         video_trimmer::trim_video,
         video_trimmer::probe_video_duration,
