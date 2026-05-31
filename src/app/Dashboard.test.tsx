@@ -31,9 +31,12 @@ describe("Dashboard", () => {
     expect(
       within(imageSection).getByRole("link", { name: /format converter/i }),
     ).toBeInTheDocument();
-    // Image section also carries the Crop tool.
+    // Image section also carries the Crop + Resize tools.
     expect(
       within(imageSection).getByRole("link", { name: /crop/i }),
+    ).toBeInTheDocument();
+    expect(
+      within(imageSection).getByRole("link", { name: /resize/i }),
     ).toBeInTheDocument();
     expect(
       within(audioSection).getByRole("link", { name: /format converter/i }),
@@ -92,11 +95,14 @@ describe("Dashboard", () => {
         name: /format converter/i,
       }),
     ).toBeInTheDocument();
-    // Image section now carries the Format Converter + Crop.
+    // Image section now carries the Format Converter + Crop + Resize.
     expect(
       within(imageSection).getByRole("link", { name: /crop/i }),
     ).toBeInTheDocument();
-    expect(within(imageSection).getAllByRole("link")).toHaveLength(2);
+    expect(
+      within(imageSection).getByRole("link", { name: /resize/i }),
+    ).toBeInTheDocument();
+    expect(within(imageSection).getAllByRole("link")).toHaveLength(3);
     expect(
       within(audioSection).getByRole("link", {
         name: /format converter/i,
@@ -162,6 +168,9 @@ describe("Dashboard", () => {
     const imageCrop = within(imageSection).getByRole("link", {
       name: /crop/i,
     });
+    const imageResize = within(imageSection).getByRole("link", {
+      name: /resize/i,
+    });
     const audioFormat = within(audioSection).getByRole("link", {
       name: /format converter/i,
     });
@@ -188,6 +197,7 @@ describe("Dashboard", () => {
     expect(imagesToPdf.getAttribute("data-tile-color")).toBe("amber");
     expect(imageFormat.getAttribute("data-tile-color")).toBe("sky");
     expect(imageCrop.getAttribute("data-tile-color")).toBe("violet");
+    expect(imageResize.getAttribute("data-tile-color")).toBe("emerald");
     expect(audioFormat.getAttribute("data-tile-color")).toBe("emerald");
     expect(audioTrimmer.getAttribute("data-tile-color")).toBe("violet");
     expect(videoFormat.getAttribute("data-tile-color")).toBe("teal");
