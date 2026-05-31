@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { ImageThumbnail } from "@/components/ImageThumbnail";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   allowMediaPreview,
-  imageAssetUrl,
   pickConvertibleImages,
   revealInFolder,
 } from "@/lib/system";
@@ -219,28 +219,7 @@ export function ImageFormatConverter() {
             className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4"
           >
             {state.paths.map((path) => (
-              <li
-                key={path}
-                className="relative flex flex-col items-center gap-2 rounded-md border border-border bg-card p-2"
-              >
-                <img
-                  src={imageAssetUrl(path)}
-                  alt=""
-                  draggable={false}
-                  className="h-24 w-full rounded object-contain"
-                />
-                <span className="line-clamp-2 break-all text-center text-xs">
-                  {fileName(path)}
-                </span>
-                <button
-                  type="button"
-                  aria-label={`Remove ${fileName(path)}`}
-                  onClick={() => removePath(path)}
-                  className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full border border-border bg-background text-sm leading-none shadow-sm hover:bg-accent"
-                >
-                  ×
-                </button>
-              </li>
+              <ImageThumbnail key={path} path={path} onRemove={removePath} />
             ))}
           </ul>
 
