@@ -146,26 +146,8 @@ mod tests {
         }
     }
 
-    /// Minimal classic little-endian multi-IFD TIFF (no pixel data) — enough
-    /// for the convert layer's frame counter to reject it. Mirrors the
-    /// helper in `convert.rs` tests so the orchestrator can prove it
-    /// propagates the rejection + writes nothing.
-    fn multi_ifd_tiff(frames: usize) -> Vec<u8> {
-        let mut b = Vec::new();
-        b.extend_from_slice(b"II");
-        b.extend_from_slice(&42u16.to_le_bytes());
-        b.extend_from_slice(&8u32.to_le_bytes());
-        for i in 0..frames {
-            b.extend_from_slice(&0u16.to_le_bytes());
-            let next = if i + 1 == frames {
-                0u32
-            } else {
-                u32::try_from(b.len() + 4).unwrap()
-            };
-            b.extend_from_slice(&next.to_le_bytes());
-        }
-        b
-    }
+    // Multi-IFD TIFF synthesis lives in `crate::image::tiff`.
+    use crate::image::tiff::multi_ifd_tiff;
 
     #[test]
     fn happy_path_writes_cropped_png_with_expected_name() {
