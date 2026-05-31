@@ -44,10 +44,12 @@ Linear interpolation between two per-codec anchors. `slider=1.0` matches the tri
 | HEVC | CRF 34 | CRF 20 | `libx265 -preset medium` |
 | VP9 | CRF 40 | CRF 28 | `libvpx-vp9 -b:v 0 -row-mt 1` |
 | AV1 | CRF 42 | CRF 30 | `libaom-av1 -cpu-used 6 -row-mt 1` |
-| VP8 | `-b:v 200k -crf 15` | `-b:v 2M -crf 4` | `libvpx` |
+| VP8 | CRF 25 (fixed `-b:v 1M`) | CRF 10 (fixed `-b:v 1M`) | `libvpx` |
 | Fallback (unknown source codec) | CRF 32 | CRF 18 | `libx264 -preset medium` |
 
-Values are tunable during smoke. `-pix_fmt` is mirrored from the probed source (no silent 10-bit → 8-bit downgrade), same shape as the trimmer.
+Values are tunable during smoke. `-pix_fmt` is mirrored from the probed source (no silent 10-bit → 8-bit downgrade), same shape as the trimmer. The shared `multitool_core::video::reencode` module owns the table — both tools read from it (trimmer pins `slider=1.0`).
+
+VP8 keeps a fixed `-b:v 1M` cap in v1 to preserve the trimmer's existing behavior at its transparent CRF; scaling the VP8 bitrate cap with the slider would change two things at once on a codec that's rare in real-world input.
 
 ## Shared `multitool_core::video` (refactor lands before tool work)
 
@@ -102,7 +104,7 @@ Flip `pending → done` on each row in-place after the commit lands, paste the S
 
 | # | Commit | Status | SHA | Notes |
 | --- | --- | --- | --- | --- |
-| 1 | `refactor(video): hoist preview proxy to multitool_core::video` | pending | — | Move `tools/video_trimmer/proxy.rs` → `multitool_core/video/proxy.rs`; new `video/mod.rs` re-exports `generate_proxy`. Update `video_trimmer/mod.rs` to re-export from the shared location. Trimmer tests + clippy must pass unchanged. |
+| 1 | `refactor(video): hoist preview proxy to multitool_core::video` | done | `82d388c` | Pure rename. `cargo test -p multitool-core --all-targets` stayed at 342 passed; only the proxy tests changed module path to `video::proxy::tests`. Trimmer re-exports `generate_proxy` from `crate::video::proxy` so the shell shim's `multitool_core::tools::video_trimmer::generate_proxy` import path is unchanged. |
 | 2 | `refactor(video): hoist codec mirror tables + add CRF-parameterised builder` | pending | — | Move `select_video_encoder_flags` / `select_audio_encoder_flags` from `video_trimmer/convert.rs` to `multitool_core/video/reencode.rs`. Add `video_encoder_flags_for_crf(codec, crf) -> Vec<String>` (returns owned strings since CRF varies). Trimmer's `build_reencode_args` keeps calling the fixed-CRF helpers. Tests cover the new builder. |
 | 3 | `refactor(video): hoist preview-proxy Tauri commands to shared module` | pending | — | Move `prepare_preview_proxy` / `cleanup_preview_proxy` / `cleanup_stale_proxies` + `PROXY_PREFIX` from `src-tauri/src/tools/video_trimmer/mod.rs` to new `src-tauri/src/preview_proxy.rs`. Re-register in `lib.rs::register_commands` (one tool's surface → app-level surface). Trimmer's TS wrapper imports unchanged (commands still exist with same names). |
 | 4 | `feat(video-compress): add core convert + job` | pending | — | New `multitool_core/tools/video_compress/{convert.rs,job.rs,mod.rs}`. `Opts { quality: f64 }`; arg builder mirrors the trimmer's shape minus `-ss`/`-t`, with `-c:a copy` and the CRF interpolated per source codec via `multitool_core::video::reencode`. Tests on `convert.rs` (arg shape, CRF mapping at 0/0.5/1, silent-video path, VP8 special case, fallback codec). Tests on `job.rs` (happy path, cancel, collision, missing input, garbage input, on_progress error). Register module in `tools/mod.rs`. |

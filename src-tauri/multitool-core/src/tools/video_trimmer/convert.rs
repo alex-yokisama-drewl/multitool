@@ -28,6 +28,7 @@ use tokio_util::sync::CancellationToken;
 use crate::error::{AppError, AppResult};
 use crate::ffmpeg::{self, AudioStreamParams, VideoStreamParams};
 use crate::fs::unique_path;
+use crate::video::reencode::{audio_encoder_flags, video_crf_range, video_encoder_flags};
 
 /// User-facing trim options. Range bounds are milliseconds from the start
 /// of the source.
@@ -169,74 +170,6 @@ fn fmt_secs(ms: u64) -> String {
     format!("{}.{:03}", ms / 1000, ms % 1000)
 }
 
-// ---------- Codec-mirror tables for the frame-accurate re-encode ----------
-//
-// The mapping tables below mirror the source codec onto a same-family
-// encoder available in the bundled ffmpeg (eugeneware b6.1.1; coverage
-// verified per `docs/plans/VIDEO_TRIMMER_FRAME_ACCURATE.md` →
-// "Step 1 prerequisite"). CRF values target perceptual transparency for
-// a single encoding generation — H.264 18, HEVC 20, VP9 28, AV1 30. We
-// do NOT mirror source bitrate (CBR-to-match-source can both bloat *and*
-// degrade; relying on CRF lets the codec spend bits where they matter).
-//
-// `codec` is the lowercase ffmpeg name parsed by
-// [`crate::ffmpeg::parse_video_stream_line`] /
-// [`crate::ffmpeg::parse_audio_stream_line`].
-
-/// Encoder + quality flags for a source video codec name. Returns the
-/// ffmpeg arg fragments in `[-c:v <enc>, <flag>, <val>, …]` order.
-/// Anything we don't recognise falls back to libx264 — it's universally
-/// playable, ships in every release of the bundle, and lands smaller
-/// than the source for most legacy codecs.
-fn select_video_encoder_flags(codec: &str) -> &'static [&'static str] {
-    match codec {
-        "h264" => &["-c:v", "libx264", "-crf", "18", "-preset", "medium"],
-        "hevc" => &["-c:v", "libx265", "-crf", "20", "-preset", "medium"],
-        "vp9" => &[
-            "-c:v",
-            "libvpx-vp9",
-            "-crf",
-            "28",
-            "-b:v",
-            "0",
-            "-row-mt",
-            "1",
-        ],
-        "av1" => &[
-            "-c:v",
-            "libaom-av1",
-            "-crf",
-            "30",
-            "-cpu-used",
-            "6",
-            "-row-mt",
-            "1",
-        ],
-        "vp8" => &["-c:v", "libvpx", "-crf", "10", "-b:v", "1M"],
-        _ => &["-c:v", "libx264", "-crf", "18", "-preset", "medium"],
-    }
-}
-
-/// Encoder + quality flags for a source audio codec name. AAC is the
-/// universal fallback — it's the lingua franca of mp4/mov containers
-/// and rounds out anything mp3-or-older the table doesn't list.
-fn select_audio_encoder_flags(codec: &str) -> &'static [&'static str] {
-    match codec {
-        // AAC at 128k is perceptually transparent for stereo music and
-        // avoids the ~4× over-encode penalty seen against low-bitrate
-        // phone-capture sources (smoke #1 caught a 44k-source → 191k-out
-        // case). AC3 stays at 192k — it's typically a surround/5.1
-        // format where cutting further would degrade the mix.
-        "aac" => &["-c:a", "aac", "-b:a", "128k"],
-        "opus" => &["-c:a", "libopus", "-b:a", "128k"],
-        "mp3" => &["-c:a", "libmp3lame", "-q:a", "2"],
-        "flac" => &["-c:a", "flac"],
-        "vorbis" => &["-c:a", "libvorbis", "-q:a", "5"],
-        "ac3" => &["-c:a", "ac3", "-b:a", "192k"],
-        _ => &["-c:a", "aac", "-b:a", "128k"],
-    }
-}
-
 /// Build the ffmpeg arg vec for a **frame-accurate, codec-matched
 /// re-encode** trim. Shape change vs [`build_args`]:
 ///
@@ -248,11 +181,13 @@ fn select_audio_encoder_flags(codec: &str) -> &'static [&'static str] {
 /// - `-map 0:a?` only when the source actually has audio — `audio:
 ///   None` (silent video) drops the audio map and audio codec flags
 ///   entirely.
-/// - Video codec + flags from the mirror table; `-pix_fmt` mirrored
-///   from the probed source pix_fmt (so 10-bit / HDR-adjacent sources
-///   round-trip without a silent yuv420p downgrade). Falls back to
-///   yuv420p only when the probe didn't yield one.
-/// - Audio codec + flags from the mirror table when audio is present.
+/// - Video codec + flags from the shared mirror table at the codec's
+///   transparent CRF ([`video_crf_range`]); `-pix_fmt` mirrored from the
+///   probed source pix_fmt (so 10-bit / HDR-adjacent sources round-trip
+///   without a silent yuv420p downgrade). Falls back to yuv420p only
+///   when the probe didn't yield one.
+/// - Audio codec + flags from the shared mirror table when audio is
+///   present.
 /// - `-avoid_negative_ts make_zero` kept — defends against quirky
 ///   source timestamps on either trim path.
 fn build_reencode_args(
@@ -278,13 +213,14 @@ fn build_reencode_args(
         args.push("-map".into());
         args.push("0:a?".into());
     }
-    for &flag in select_video_encoder_flags(&video.codec) {
+    let (transparent_crf, _) = video_crf_range(&video.codec);
+    for flag in video_encoder_flags(&video.codec, transparent_crf) {
         args.push(flag.into());
     }
     args.push("-pix_fmt".into());
     args.push(video.pix_fmt.as_deref().unwrap_or("yuv420p").into());
     if let Some(audio) = audio {
-        for &flag in select_audio_encoder_flags(&audio.codec) {
+        for &flag in audio_encoder_flags(&audio.codec) {
             args.push(flag.into());
         }
     }
@@ -342,56 +278,6 @@ mod tests {
             codec: codec.to_string(),
             sample_rate: Some(48_000),
             channels: Some("stereo".into()),
-        }
-    }
-
-    #[test]
-    fn video_encoder_flags_map_known_codecs_to_same_family_encoders() {
-        let h264 = select_video_encoder_flags("h264");
-        assert_eq!(h264[0], "-c:v");
-        assert_eq!(h264[1], "libx264");
-        assert!(h264.contains(&"-crf"));
-
-        let hevc = select_video_encoder_flags("hevc");
-        assert_eq!(hevc[1], "libx265");
-
-        let vp9 = select_video_encoder_flags("vp9");
-        assert_eq!(vp9[1], "libvpx-vp9");
-        assert!(vp9.contains(&"-row-mt"), "vp9 needs row-mt for parallelism");
-
-        let av1 = select_video_encoder_flags("av1");
-        assert_eq!(av1[1], "libaom-av1");
-
-        let vp8 = select_video_encoder_flags("vp8");
-        assert_eq!(vp8[1], "libvpx");
-    }
-
-    #[test]
-    fn video_encoder_flags_unknown_codec_falls_back_to_libx264() {
-        // mpeg2video, wmv3, mpeg4, and anything else exotic — all land
-        // on libx264 because it's universally playable and ships in the
-        // bundled binary on every target.
-        for exotic in ["mpeg2video", "wmv3", "mpeg4", "prores", "dvvideo", ""] {
-            let flags = select_video_encoder_flags(exotic);
-            assert_eq!(flags[1], "libx264", "fallback for {exotic}");
-        }
-    }
-
-    #[test]
-    fn audio_encoder_flags_map_known_codecs() {
-        assert_eq!(select_audio_encoder_flags("aac")[1], "aac");
-        assert_eq!(select_audio_encoder_flags("opus")[1], "libopus");
-        assert_eq!(select_audio_encoder_flags("mp3")[1], "libmp3lame");
-        assert_eq!(select_audio_encoder_flags("flac")[1], "flac");
-        assert_eq!(select_audio_encoder_flags("vorbis")[1], "libvorbis");
-        assert_eq!(select_audio_encoder_flags("ac3")[1], "ac3");
-    }
-
-    #[test]
-    fn audio_encoder_flags_unknown_codec_falls_back_to_aac() {
-        for exotic in ["pcm_s16le", "wmav2", "dts", ""] {
-            let flags = select_audio_encoder_flags(exotic);
-            assert_eq!(flags[1], "aac", "fallback for {exotic}");
         }
     }
 
