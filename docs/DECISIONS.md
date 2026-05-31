@@ -6,6 +6,26 @@ Choices, caveats, and recipes that affect future work — patterns we must keep 
 
 ---
 
+## Image Compress: per-source strategy, slider default 0.8, EXIF stripped
+
+The Image Compress tool re-encodes via a per-source strategy keyed on the file's **extension** (matching the [`image_crop`](../src-tauri/multitool-core/src/tools/image_crop/) "extension wins for output, bytes win for decode" rule):
+
+| Source ext             | Output ext              | Encoder       |
+| ---------------------- | ----------------------- | ------------- |
+| `jpg` / `jpeg`         | source spelling kept    | `image` JPEG  |
+| `webp`                 | `webp`                  | `webp` (lossy)|
+| `png` / `bmp` / `tif(f)` | `webp`                | `webp` (lossy)|
+
+- **JPEG / WebP preserve the source format.** Aligns with the project's "output format matches input unless explicitly stated otherwise" philosophy (Crop / Resize / Trimmer all preserve format).
+- **PNG / BMP / TIFF redirect to lossy WebP** because the source formats either don't carry a quality dial (PNG lossless, BMP uncompressed) or don't expose one through `image` 0.25 (TIFF's LZW / Deflate / PackBits aren't reachable from the `image` encoder). Redirecting to a lossy target means the slider has the same meaning everywhere. **A reactive amber banner in staging surfaces the redirect** with per-format counts so the conversion isn't hidden ("3 files will be saved as WebP — PNG (1), BMP (1), TIF (1)"). The header copy isn't load-bearing alone — the smoke session caught that the banner was needed to make the conversion noticeable. Considered + deferred: PNG-via-imagequant + TIFF-in-format lanes (see [BACKLOG](plans/BACKLOG.md) → Image). Rejected: JPEG fallback for lossless inputs — silently flattens alpha onto white, wrong default for a "compress this image" verb.
+- **Slider default `0.8`, not `0.5` (Video Compress's midpoint).** JPEG / WebP at q=50 is visibly worse than CRF-50 on video. `0.8` is the "save for web" sweet spot — visibly smaller than the source for most JPEGs while still indistinguishable at typical viewing sizes. Single linear map (`q = round(1 + 99 * slider)`) covers both encoders.
+- **EXIF is stripped by side effect of the `image` decode → re-encode round-trip.** Same behaviour as Crop / Resize — pinned here so a future "preserve EXIF" instinct gets a written counter-argument. Orientation is honoured on the way in (via [`decode_oriented`](../src-tauri/multitool-core/src/image/mod.rs)) so a rotated source comes out upright; the actual EXIF block is dropped.
+- **Cancellation is between files only.** A single JPEG / WebP encode is fast enough that mid-file cancel isn't useful and would complicate cleanup. Same shape as the Image Format Converter; different from Video Compress, which can kill an ffmpeg child mid-encode.
+- **The staging UI's predicted-output filename mirrors the Rust strategy table in [`ImageCompress.tsx`](../src/tools/image-compress/ImageCompress.tsx).** Keep `predictedOutputExtension()` aligned with `strategy_for` in [`convert.rs`](../src-tauri/multitool-core/src/tools/image_compress/convert.rs) — drift would show up as a "predicted ≠ written" mismatch in the done view.
+- **`file_size` IPC command** rather than the `tauri-plugin-fs` dep — single stat lookup doesn't justify a new plugin surface. Lives in [`src-tauri/src/system.rs`](../src-tauri/src/system.rs) alongside `supported_raster_formats`; failure here only blanks the staging-row size display, never blocks the run.
+
+---
+
 ## Image Compress: libwebp via `webp` crate
 
 The Image Compress tool needs **lossy** WebP encoding, which `image` 0.25 doesn't provide (see "WebP output is lossless only" below — that entry explicitly told us to weigh the dep in a new entry before adding it; this is that entry). Picked [`webp`](https://crates.io/crates/webp) 0.3 — a thin wrapper over `libwebp-sys`, which builds libwebp from source via `cc-rs`. **No autotools, no system libs** — unlike `mp3lame-sys`, which needed a `brew install autoconf automake libtool` step on the macOS CI runner. License: BSD; bundle-compatible alongside the existing GPL ffmpeg bundle.
@@ -14,7 +34,7 @@ Why lossy WebP is load-bearing for image-compress:
 - **WebP→WebP re-encode** at the user's slider position (image-compress's v1 strategy preserves source format for JPEG and WebP).
 - **PNG/BMP/TIFF→WebP** under-the-hood lane: lossless inputs need a lossy target so the slider has meaning; lossy WebP supports alpha so PNG transparency round-trips. JPEG fallback was rejected — it silently flattens alpha onto white, which is the wrong default for a "compress this image" verb.
 
-**Verify on first push that CI builds clean across all three runners** (ubuntu-latest / macos-latest / windows-latest). If any runner needs an extra system dep, add the step to both [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) and [`.github/workflows/release.yml`](../.github/workflows/release.yml) — same rule as the mp3lame brew step.
+CI cleared all three runners (Linux / macOS / Windows) on the first push — `libwebp-sys` builds cleanly via `cc-rs` everywhere with no extra system-dep step. If a future bump of `webp` / `libwebp-sys` regresses that on any runner, add the step to both [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) and [`.github/workflows/release.yml`](../.github/workflows/release.yml), same as the mp3lame brew step.
 
 ---
 
@@ -165,9 +185,11 @@ PDF→Images needs `pdfium.{dll,so,dylib}` available at runtime; baking `env!("P
 
 ---
 
-## WebP output is lossless only (no `webp_quality` option)
+## WebP output is lossless only (no `webp_quality` option) — image-format-converter scope
 
-`image` 0.25's WebP encoder is lossless-only. `TargetFormat::Webp` in image-format-converter emits lossless WebP unconditionally — no `webp_quality` field in `Opts`. A lossy lane would mean the `webp` crate (libwebp C bindings + native build dep on every CI runner) or `image-webp` (lossless-only encoder at last check). **Don't add a silent quality field that gets ignored** — if lossy WebP is needed, weigh the libwebp dep in a new entry first.
+`image` 0.25's WebP encoder is lossless-only. `TargetFormat::Webp` in image-format-converter emits lossless WebP unconditionally — no `webp_quality` field in `Opts`. A lossy lane would mean the `webp` crate (libwebp C bindings + native build dep on every CI runner) or `image-webp` (lossless-only encoder at last check). **Don't add a silent quality field that gets ignored**.
+
+Note: the libwebp dep was eventually added — but for image-compress, which needs lossy WebP for its quality slider (see "Image Compress: libwebp via `webp` crate" above). The format-converter's lossless contract still stands; converting to lossy WebP there would be a separate decision (the converter's "no quality knob" ethos doesn't fit a quality field).
 
 ---
 
