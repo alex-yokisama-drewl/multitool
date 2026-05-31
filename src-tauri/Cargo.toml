@@ -13,7 +13,7 @@ members = [".", "multitool-core"]
 
 [package]
 name = "multitool"
-version = "0.2.1"
+version = "0.3.0"
 description = "Cross-platform offline multitool desktop app"
 authors = ["Alex Yokisama <alex@drewl.com>"]
 edition = "2021"
