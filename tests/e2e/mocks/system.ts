@@ -115,3 +115,12 @@ export function revealInFolder(_path: string): Promise<void> {
   // No-op in browser; the spec only asserts the button is clickable.
   return Promise.resolve();
 }
+
+// Backend's `file_size` IPC stand-in. Real backend stats the file; in
+// the browser we just return a deterministic byte count so the
+// staging-row size text renders something. The spec doesn't assert on
+// the exact value (it'd couple to the mock's literal number).
+export function fileSize(_path: string): Promise<number> {
+  void _path;
+  return Promise.resolve(2_000_000);
+}
