@@ -6,5 +6,7 @@
 //! shim layer on top in later commits.
 
 pub mod convert;
+pub mod job;
 
 pub use convert::{resize_one, Background, FitMode, Opts};
+pub use job::{run_job, JobResult, Progress};
