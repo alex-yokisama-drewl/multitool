@@ -48,12 +48,15 @@ describe("Dashboard", () => {
     expect(
       within(audioSection).getByRole("link", { name: /trimmer/i }),
     ).toBeInTheDocument();
-    // Video section also carries the Audio Extractor + Trimmer.
+    // Video section also carries the Audio Extractor + Trimmer + Compress.
     expect(
       within(videoSection).getByRole("link", { name: /audio extractor/i }),
     ).toBeInTheDocument();
     expect(
       within(videoSection).getByRole("link", { name: /trimmer/i }),
+    ).toBeInTheDocument();
+    expect(
+      within(videoSection).getByRole("link", { name: /compress/i }),
     ).toBeInTheDocument();
     // Text section carries the Lorem Ipsum tile.
     const textSection = screen
@@ -113,7 +116,7 @@ describe("Dashboard", () => {
     ).toBeInTheDocument();
     // Two tiles under Audio now (Format Converter + Trimmer).
     expect(within(audioSection).getAllByRole("link")).toHaveLength(2);
-    // Video section carries the Format Converter + Trimmer + Audio Extractor.
+    // Video section carries Format Converter + Trimmer + Compress + Audio Extractor.
     expect(
       within(videoSection).getByRole("link", { name: /format converter/i }),
     ).toBeInTheDocument();
@@ -121,9 +124,12 @@ describe("Dashboard", () => {
       within(videoSection).getByRole("link", { name: /trimmer/i }),
     ).toBeInTheDocument();
     expect(
+      within(videoSection).getByRole("link", { name: /compress/i }),
+    ).toBeInTheDocument();
+    expect(
       within(videoSection).getByRole("link", { name: /audio extractor/i }),
     ).toBeInTheDocument();
-    expect(within(videoSection).getAllByRole("link")).toHaveLength(3);
+    expect(within(videoSection).getAllByRole("link")).toHaveLength(4);
 
     const textSection = screen
       .getByRole("heading", { name: /^text$/i })
@@ -186,6 +192,9 @@ describe("Dashboard", () => {
     const audioExtractor = within(videoSection).getByRole("link", {
       name: /audio extractor/i,
     });
+    const videoCompress = within(videoSection).getByRole("link", {
+      name: /compress/i,
+    });
     const textSection = screen
       .getByRole("heading", { name: /^text$/i })
       .closest("section")!;
@@ -202,6 +211,7 @@ describe("Dashboard", () => {
     expect(audioTrimmer.getAttribute("data-tile-color")).toBe("violet");
     expect(videoFormat.getAttribute("data-tile-color")).toBe("teal");
     expect(videoTrimmer.getAttribute("data-tile-color")).toBe("rose");
+    expect(videoCompress.getAttribute("data-tile-color")).toBe("violet");
     expect(audioExtractor.getAttribute("data-tile-color")).toBe("amber");
     expect(lorem.getAttribute("data-tile-color")).toBe("teal");
 
@@ -212,6 +222,7 @@ describe("Dashboard", () => {
     expect(audioTrimmer.style.backgroundColor).toBe("var(--tile-violet)");
     expect(videoFormat.style.backgroundColor).toBe("var(--tile-teal)");
     expect(videoTrimmer.style.backgroundColor).toBe("var(--tile-rose)");
+    expect(videoCompress.style.backgroundColor).toBe("var(--tile-violet)");
     expect(audioExtractor.style.backgroundColor).toBe("var(--tile-amber)");
     expect(lorem.style.backgroundColor).toBe("var(--tile-teal)");
   });
