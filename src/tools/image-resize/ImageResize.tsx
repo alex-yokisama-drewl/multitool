@@ -85,6 +85,20 @@ export function ImageResize() {
       : undefined;
   const sourceSupportsAlpha = sourceFormat?.supports_alpha ?? false;
   const proportional = lockedRatio !== null;
+  // Whether the target W/H differs in aspect from the source. Cross-
+  // multiplying integers avoids floating-point rounding (e.g. 100/50
+  // ≠ 200/100 only because of f64 imprecision), so a 100×50 source
+  // resized to 200×100 reports `false` exactly. Both products top out
+  // at MAX_DIM² ≈ 2.7×10⁸ — well inside JS's 2⁵³ safe-integer range.
+  //
+  // Drives the visibility of the Fit + Background pickers: when the
+  // aspect matches, Stretch / Contain / Cover collapse to the same
+  // pixel-equivalent scale, so showing the radios would be noise.
+  const aspectMismatch =
+    !!dims &&
+    width > 0 &&
+    height > 0 &&
+    width * dims.height !== dims.width * height;
 
   // Once a picked path AND the format set are both known, apply the
   // background default: Transparent when the source carries alpha
@@ -263,7 +277,7 @@ export function ImageResize() {
                 Lock aspect ratio
               </label>
 
-              {!proportional && (
+              {aspectMismatch && (
                 <fieldset className="space-y-3">
                   <legend className="text-sm font-medium">Fit</legend>
                   <RadioGroup
@@ -287,7 +301,7 @@ export function ImageResize() {
                 </fieldset>
               )}
 
-              {!proportional && fit === "contain" && (
+              {aspectMismatch && fit === "contain" && (
                 <fieldset className="space-y-3">
                   <legend className="text-sm font-medium">Background</legend>
                   <RadioGroup
