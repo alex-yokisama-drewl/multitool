@@ -6,11 +6,15 @@ const {
   pickConvertibleImagesMock,
   revealInFolderMock,
   fileSizeMock,
+  allowMediaPreviewMock,
+  imageAssetUrlMock,
   compressImagesMock,
 } = vi.hoisted(() => ({
   pickConvertibleImagesMock: vi.fn(),
   revealInFolderMock: vi.fn(),
   fileSizeMock: vi.fn(),
+  allowMediaPreviewMock: vi.fn(),
+  imageAssetUrlMock: vi.fn((p: string) => `asset://${p}`),
   compressImagesMock: vi.fn(),
 }));
 
@@ -18,6 +22,8 @@ vi.mock("@/lib/system", () => ({
   pickConvertibleImages: pickConvertibleImagesMock,
   revealInFolder: revealInFolderMock,
   fileSize: fileSizeMock,
+  allowMediaPreview: allowMediaPreviewMock,
+  imageAssetUrl: imageAssetUrlMock,
 }));
 vi.mock("@/lib/tools/imageCompress", () => ({
   compressImages: compressImagesMock,
@@ -46,6 +52,8 @@ beforeEach(() => {
   pickConvertibleImagesMock.mockReset();
   revealInFolderMock.mockReset().mockResolvedValue(undefined);
   fileSizeMock.mockReset().mockResolvedValue(1024);
+  allowMediaPreviewMock.mockReset().mockResolvedValue(undefined);
+  imageAssetUrlMock.mockClear();
   compressImagesMock.mockReset();
 });
 
@@ -137,6 +145,24 @@ describe("ImageCompress", () => {
       screen.getByRole("button", { name: /^compress$/i }),
     ).toBeInTheDocument();
     expect(screen.getByText("red.png")).toBeInTheDocument();
+  });
+
+  it("renders the WebP-redirect banner when PNG/BMP/TIFF inputs are present", async () => {
+    renderTool();
+    // Mixed batch: PNG + BMP + TIFF will redirect to WebP; JPEG stays JPEG.
+    await pick(["/tmp/a.png", "/tmp/b.bmp", "/tmp/c.tif", "/tmp/d.jpg"]);
+
+    const banner = screen.getByRole("status");
+    // Plural-aware total (3 PNG/BMP/TIFF, not 4 — JPEG isn't redirected).
+    expect(banner).toHaveTextContent(/3 files will be saved as WebP/i);
+    // Per-format breakdown in stable order.
+    expect(banner).toHaveTextContent(/PNG \(1\), BMP \(1\), TIF \(1\)/i);
+  });
+
+  it("omits the WebP-redirect banner when the batch is JPEG-only", async () => {
+    renderTool();
+    await pick(["/tmp/a.jpg", "/tmp/b.jpeg"]);
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("aborts the compress signal when Cancel is clicked", async () => {

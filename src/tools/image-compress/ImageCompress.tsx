@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { ImageThumbnail } from "@/components/ImageThumbnail";
 import { Progress } from "@/components/ui/progress";
-import { fileSize, pickConvertibleImages, revealInFolder } from "@/lib/system";
+import {
+  allowMediaPreview,
+  fileSize,
+  pickConvertibleImages,
+  revealInFolder,
+} from "@/lib/system";
 import { compressImages } from "@/lib/tools/imageCompress";
 import { fileName, fileStem, formatBytes } from "@/lib/utils";
 import type {
@@ -54,17 +60,37 @@ const DEFAULT_QUALITY = 0.8;
 // `.webp` under the per-format strategy. Keep this aligned with the Rust
 // side so the predicted-output filename in staging matches what the
 // orchestrator actually writes.
-function predictedOutputExtension(sourcePath: string): string {
+function sourceExtension(sourcePath: string): string {
   const name = fileName(sourcePath);
   const dot = name.lastIndexOf(".");
-  if (dot <= 0) return "webp";
-  const ext = name.slice(dot + 1).toLowerCase();
+  return dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
+}
+
+function predictedOutputExtension(sourcePath: string): string {
+  const ext = sourceExtension(sourcePath);
   if (ext === "jpg" || ext === "jpeg") return ext;
   return "webp";
 }
 
 function predictedOutputName(sourcePath: string): string {
   return `${fileStem(sourcePath)}_compressed.${predictedOutputExtension(sourcePath)}`;
+}
+
+// Which source extensions get redirected to WebP under the per-source
+// strategy. Keep aligned with `strategy_for` in the Rust side. Used to
+// drive the warning banner so the conversion is surfaced explicitly
+// instead of buried in the header copy.
+const REDIRECT_TO_WEBP = new Set(["png", "bmp", "tif", "tiff"]);
+
+function redirectCountsByExt(entries: StagedEntry[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const entry of entries) {
+    const ext = sourceExtension(entry.path);
+    if (REDIRECT_TO_WEBP.has(ext)) {
+      counts.set(ext, (counts.get(ext) ?? 0) + 1);
+    }
+  }
+  return counts;
 }
 
 function toEnvelope(err: unknown, fallback: string): AppErrorEnvelope {
@@ -114,6 +140,10 @@ export function ImageCompress() {
   const pickImages = async () => {
     const picked = await pickConvertibleImages();
     if (!picked) return;
+    // Grant per-path asset-protocol scope so the thumbnail tiles can
+    // resolve via `convertFileSrc`. Same dynamic-per-pick policy as the
+    // format converter (DECISIONS → "Asset protocol scope").
+    await allowMediaPreview(picked);
     const entries: StagedEntry[] = picked.map((path) => ({
       path,
       sourceBytes: null,
@@ -210,40 +240,20 @@ export function ImageCompress() {
             Staged ({state.entries.length}). Output lands next to each input.
           </div>
 
+          <FormatRedirectBanner entries={state.entries} />
+
           <ul
             role="list"
             aria-label="Staged images"
-            className="divide-y divide-border rounded-md border border-border"
+            className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4"
           >
             {state.entries.map((entry) => (
-              <li
+              <ImageThumbnail
                 key={entry.path}
-                className="flex items-center justify-between gap-3 p-3 text-sm"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-baseline gap-2">
-                    <span className="truncate font-mono">
-                      {fileName(entry.path)}
-                    </span>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {entry.sourceBytes !== null
-                        ? formatBytes(entry.sourceBytes)
-                        : "—"}
-                    </span>
-                  </div>
-                  <div className="mt-1 truncate text-xs text-muted-foreground">
-                    → {predictedOutputName(entry.path)}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  aria-label={`Remove ${fileName(entry.path)}`}
-                  onClick={() => removePath(entry.path)}
-                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border bg-background text-sm leading-none shadow-sm hover:bg-accent"
-                >
-                  ×
-                </button>
-              </li>
+                path={entry.path}
+                onRemove={removePath}
+                subtitle={<ThumbnailMeta entry={entry} />}
+              />
             ))}
           </ul>
 
@@ -299,6 +309,60 @@ export function ImageCompress() {
         <DoneView result={state.result} onReset={reset} />
       )}
     </div>
+  );
+}
+
+interface FormatRedirectBannerProps {
+  entries: StagedEntry[];
+}
+
+// Reactive banner: shows up when any picked file's source format would
+// be redirected to WebP under the per-source strategy (PNG / BMP / TIFF).
+// Hidden when the batch is JPEG-only and/or WebP-only — those preserve
+// their source format and the header copy already covers it. Kept
+// non-destructive (amber, not red) since it's expected behaviour, not an
+// error.
+function FormatRedirectBanner({ entries }: FormatRedirectBannerProps) {
+  const counts = redirectCountsByExt(entries);
+  if (counts.size === 0) return null;
+  const total = Array.from(counts.values()).reduce((a, b) => a + b, 0);
+  // Stable display order: PNG, BMP, TIF/TIFF — matches the strategy table.
+  const order = ["png", "bmp", "tif", "tiff"];
+  const parts = order
+    .filter((ext) => counts.has(ext))
+    .map((ext) => `${ext.toUpperCase()} (${String(counts.get(ext) ?? 0)})`);
+  return (
+    <div
+      role="status"
+      className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200"
+    >
+      <div className="font-medium">
+        {total} file{total === 1 ? "" : "s"} will be saved as WebP
+      </div>
+      <div className="mt-1 text-xs">
+        {parts.join(", ")}. These source formats can&apos;t carry the
+        compression themselves; JPEG inputs stay JPEG.
+      </div>
+    </div>
+  );
+}
+
+interface ThumbnailMetaProps {
+  entry: StagedEntry;
+}
+
+// Two-line meta block rendered under the filename in each staging tile:
+// source size (resolved async via the backend `file_size` command) and
+// the predicted output filename (per the source-strategy table). Falls
+// back to "—" for size until the stat resolves; the row stays usable.
+function ThumbnailMeta({ entry }: ThumbnailMetaProps) {
+  return (
+    <>
+      <div>
+        {entry.sourceBytes !== null ? formatBytes(entry.sourceBytes) : "—"}
+      </div>
+      <div className="truncate">→ {predictedOutputName(entry.path)}</div>
+    </>
   );
 }
 
