@@ -17,5 +17,6 @@ pub mod image_format_converter;
 pub mod image_resize;
 pub mod images_to_pdf;
 pub mod pdf_to_images;
+pub mod video_compress;
 pub mod video_format_converter;
 pub mod video_trimmer;

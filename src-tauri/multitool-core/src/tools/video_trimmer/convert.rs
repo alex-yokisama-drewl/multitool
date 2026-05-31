@@ -7,17 +7,18 @@
 //! pixel format so the output round-trips without a silent quality
 //! downgrade. Codec/pixfmt come from
 //! [`crate::ffmpeg::probe_video_stream_params`] +
-//! [`crate::ffmpeg::probe_audio_stream_params`]; the mirror tables live
-//! in [`select_video_encoder_flags`] / [`select_audio_encoder_flags`].
+//! [`crate::ffmpeg::probe_audio_stream_params`]; the mirror tables now
+//! live in [`crate::video::reencode`] (shared with the Video Compressor)
+//! — the trimmer pins each codec's "transparent" slot from
+//! `video_crf_range`.
 //!
 //! Why frame-accurate, always-on: the v1 stream-copy snapped the cut to
 //! the keyframe ≤ start (up to ~8–10s early on long-GOP sources). Speed
-//! doesn't matter for a learning-project trimmer, accuracy does — see
-//! [`docs/plans/VIDEO_TRIMMER_FRAME_ACCURATE.md`](../../../../../docs/plans/VIDEO_TRIMMER_FRAME_ACCURATE.md).
+//! doesn't matter for a learning-project trimmer, accuracy does.
 //!
-//! ffmpeg-specific spawning lives in [`crate::ffmpeg`]; this module owns
-//! the trimmer's wire types, the arg-vec builder, the codec-mirror
-//! tables, and the output-naming rule.
+//! ffmpeg-specific spawning lives in [`crate::ffmpeg`]; this module
+//! owns the trimmer's wire types, the arg-vec builder, and the
+//! output-naming rule.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -36,9 +37,8 @@ use crate::video::reencode::{audio_encoder_flags, video_crf_range, video_encoder
 /// `end_ms` is clamped to the probed source duration in [`convert`];
 /// `start_ms >= end_ms` (after clamping) is rejected with
 /// `ProcessingFailed`. No fades, no codec knobs — codec, pixfmt, and
-/// audio encoder are mirrored from the source via the
-/// [`select_video_encoder_flags`] / [`select_audio_encoder_flags`]
-/// tables.
+/// audio encoder are mirrored from the source via the shared mirror
+/// tables in [`crate::video::reencode`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Opts {
     pub start_ms: u64,
