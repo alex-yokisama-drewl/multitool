@@ -247,6 +247,14 @@ export async function revealInFolder(path: string): Promise<void> {
   await revealItemInDir(path);
 }
 
+// Stat a file via the backend (avoids pulling in `tauri-plugin-fs` for a
+// single size lookup). Used by the Image Compress staging UI to show
+// source sizes before the run starts. Throws the `AppErrorEnvelope`
+// shape on missing / permission-denied paths.
+export async function fileSize(path: string): Promise<number> {
+  return await invoke<number>("file_size", { path });
+}
+
 // Grant the webview asset-protocol access to a set of picked media paths
 // (images or audio), so `convertFileSrc(path)` can render thumbnails or
 // stream into `<audio>` / `AudioContext.decodeAudioData`. Tauri's asset-
