@@ -8,6 +8,7 @@ import { imageResizeTool } from "./image-resize";
 import { imagesToPdfTool } from "./images-to-pdf";
 import { loremTool } from "./lorem";
 import { pdfToImagesTool } from "./pdf-to-images";
+import { videoCompressTool } from "./video-compress";
 import { videoFormatConverterTool } from "./video-format-converter";
 import { videoTrimmerTool } from "./video-trimmer";
 
@@ -61,6 +62,7 @@ export const tools: readonly Tool[] = [
   audioTrimmerTool,
   videoFormatConverterTool,
   videoTrimmerTool,
+  videoCompressTool,
   audioExtractorTool,
   loremTool,
 ];
