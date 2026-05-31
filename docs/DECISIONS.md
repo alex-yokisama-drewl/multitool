@@ -6,6 +6,18 @@ Choices, caveats, and recipes that affect future work — patterns we must keep 
 
 ---
 
+## Image Compress: libwebp via `webp` crate
+
+The Image Compress tool needs **lossy** WebP encoding, which `image` 0.25 doesn't provide (see "WebP output is lossless only" below — that entry explicitly told us to weigh the dep in a new entry before adding it; this is that entry). Picked [`webp`](https://crates.io/crates/webp) 0.3 — a thin wrapper over `libwebp-sys`, which builds libwebp from source via `cc-rs`. **No autotools, no system libs** — unlike `mp3lame-sys`, which needed a `brew install autoconf automake libtool` step on the macOS CI runner. License: BSD; bundle-compatible alongside the existing GPL ffmpeg bundle.
+
+Why lossy WebP is load-bearing for image-compress:
+- **WebP→WebP re-encode** at the user's slider position (image-compress's v1 strategy preserves source format for JPEG and WebP).
+- **PNG/BMP/TIFF→WebP** under-the-hood lane: lossless inputs need a lossy target so the slider has meaning; lossy WebP supports alpha so PNG transparency round-trips. JPEG fallback was rejected — it silently flattens alpha onto white, which is the wrong default for a "compress this image" verb.
+
+**Verify on first push that CI builds clean across all three runners** (ubuntu-latest / macos-latest / windows-latest). If any runner needs an extra system dep, add the step to both [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) and [`.github/workflows/release.yml`](../.github/workflows/release.yml) — same rule as the mp3lame brew step.
+
+---
+
 ## Video Compress: single-slider quality, shared CRF range, stream-copy audio
 
 The Video Compress tool (commits `82d388c…3249fc8`) is the third video tool. Adding it consolidated everything previously trimmer-only — preview-proxy transcode, codec-mirror tables, per-codec CRF anchors — into a shared [`multitool_core::video`](../src-tauri/multitool-core/src/video/) module + an app-level [`src-tauri/src/preview_proxy.rs`](../src-tauri/src/preview_proxy.rs). What's worth pinning:

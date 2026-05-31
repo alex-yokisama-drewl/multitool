@@ -25,6 +25,11 @@ pdfium-render = "0.9"
 # pdf-to-images only needs png/jpeg, but enabling extras in one crate is
 # cheaper than fragmenting feature sets per-tool.
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "tiff", "gif", "ico", "tga", "pnm", "qoi"] }
+# Lossy WebP encoder via libwebp (libwebp-sys → cc-rs, no autotools / system deps).
+# `image` 0.25's bundled WebP encoder is lossless-only; image-compress needs lossy
+# WebP for both WebP→WebP re-encode and PNG/BMP/TIFF→WebP (alpha-preserving) lanes.
+# See DECISIONS.md → "Image Compress: libwebp via webp crate".
+webp = "0.3"
 # SVG input for image-format-converter. `default-features = false` strips the
 # system-fonts / memmap-fonts / raster-images flags we don't need — system
 # fonts in particular would (a) cost cross-platform consistency and (b) pull
