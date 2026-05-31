@@ -8,8 +8,16 @@
 //! stable as more tools adopt it.
 
 pub mod raster_format;
+pub mod tiff;
 
 pub use raster_format::{RasterFormat, RasterFormatDescriptor};
+
+/// Fixed JPEG quality used by tools whose contract is "re-encode while
+/// preserving the source format" (`image_crop`, `image_resize`). Distinct
+/// from the format converter's user-controlled `jpeg_quality` knob — these
+/// tools intentionally hide quality choice from the user because their
+/// purpose is a geometric transform, not a quality trade-off.
+pub const JPEG_REENCODE_QUALITY: u8 = 90;
 
 use std::io::Cursor;
 
