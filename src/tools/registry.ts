@@ -4,6 +4,7 @@ import { audioFormatConverterTool } from "./audio-format-converter";
 import { audioTrimmerTool } from "./audio-trimmer";
 import { imageCropTool } from "./image-crop";
 import { imageFormatConverterTool } from "./image-format-converter";
+import { imageResizeTool } from "./image-resize";
 import { imagesToPdfTool } from "./images-to-pdf";
 import { loremTool } from "./lorem";
 import { pdfToImagesTool } from "./pdf-to-images";
@@ -53,6 +54,7 @@ export interface Tool {
 export const tools: readonly Tool[] = [
   imageFormatConverterTool,
   imageCropTool,
+  imageResizeTool,
   imagesToPdfTool,
   pdfToImagesTool,
   audioFormatConverterTool,
