@@ -20,7 +20,7 @@ use crate::error::{AppError, AppResult};
 
 /// FLAC magic bytes. RFC 9639 §3 calls it the "stream marker": ASCII
 /// `fLaC` at file offset 0.
-const FLAC_MAGIC: [u8; 4] = [b'f', b'L', b'a', b'C'];
+const FLAC_MAGIC: [u8; 4] = *b"fLaC";
 
 /// Decode an audio file's bytes into interleaved f32 PCM.
 ///
