@@ -50,7 +50,11 @@ A central `src/tools/registry.ts` imports each tool's metadata and exposes the l
 - **Naming:** `{stem}_{tool_suffix}.{ext}` (e.g., `report.pdf` → folder `report_pages/` containing `page_001.png`, …).
 - **Duplicate handling:** if the target exists, append ` (1)`, ` (2)`, … until a free name is found. Never overwrite silently.
 
-### 3.4 Error Handling
+### 3.4 Persisted Settings
+
+User settings — the last-used directory and each tool's remembered options — live in a versioned JSON document in Tauri's app-config dir, read once at boot and written back whole on a debounce. The document is an **opaque string-keyed blob**: Rust validates the envelope, the frontend owns every schema and sanitizes each field on read. That split is what keeps §3.1 honest — a tool declares its own prefs in its own folder and no shared Rust code changes. Loading never fails (corrupt or foreign-version resolves to defaults) and nothing is written before a load succeeds. Rationale and the rules for which options persist: [DECISIONS.md](DECISIONS.md) → "Settings memory", "Directory memory", "What tool options are remembered".
+
+### 3.5 Error Handling
 
 - All Rust commands return `Result<T, AppError>` with typed variants (`FileNotFound`, `PermissionDenied`, `UnsupportedFormat`, `ProcessingFailed`, `Encrypted`, `Cancelled`)
 - `AppError` serializes as `{ kind, message }` so the webview can branch on `kind`

@@ -6,6 +6,53 @@ Choices, caveats, and recipes that affect future work — patterns we must keep 
 
 ---
 
+## Settings memory: hand-rolled JSON document, frontend-owned schemas
+
+User settings (last-used directory, remembered tool options) persist in a versioned JSON document in Tauri's app-config dir. Two commands — [`load_settings` / `save_settings`](../src-tauri/src/settings/mod.rs) — over pure logic in [`multitool_core::settings`](../src-tauri/multitool-core/src/settings.rs); the app-config path resolves through [`crate::fs::settings_path`](../src-tauri/src/fs/mod.rs), the first helper that module earned.
+
+Rejected `tauri-plugin-store` (a new dep + capability grant for a generic key-value API wider than we need) and webview `localStorage` (not an inspectable file, wiped with webview data, puts durable state outside the Rust boundary). Follows the `file_size` precedent: a narrow command beats a generic plugin.
+
+Three properties worth not reverting:
+
+- **The document is an opaque string-keyed blob.** Rust validates the envelope — version, object shape, a size ceiling — and nothing inside it. Every schema lives in the frontend ([`src/lib/prefs.ts`](../src/lib/prefs.ts) + each tool's `prefs.ts`). This is what keeps the registry contract intact: a new tool declares its own prefs in its own folder and no shared Rust code changes. Typing the entries in Rust would make every option change a two-sided edit.
+- **Loading never fails.** Missing, corrupt, oversized or foreign-version all resolve to defaults, with a `LoadOutcome` for the shell to log. Losing preferences is an annoyance; refusing to start is a bug. Saving is atomic (temp + rename) because writes are debounced while the user is still clicking.
+- **Nothing is written before hydration succeeds.** An unhydrated store is an in-memory session store. Otherwise a failed load would clobber real settings with defaults on the first interaction — and it also keeps Vitest and plain-browser runs from attempting IPC.
+
+Every stored value is sanitized per field on read, falling back to the default rather than forwarding junk to Rust; one bad option doesn't discard the good ones beside it. Range-clamping sanitizers (`numberIn`) are only for slider-backed options. **For a free-typed number field use `finiteNumber`** — clamping on read fights the user mid-keystroke, since typing `7` on the way to `700` would snap the field to the minimum. Those options clamp in Rust, where they already did.
+
+**Gotcha for future shared modules under `src/lib/`:** import anything the e2e lane stubs by its aliased path (`@/lib/settings`), not relatively. `vite.config.ts` swaps mocks by exact specifier, so `./settings` slips past the alias and reaches the real IPC wrapper.
+
+---
+
+## Directory memory is keyed by picker media kind
+
+The last-used directory is remembered per media kind — `pdf` / `image` / `audio` / `video` — in [`src/lib/lastDirectory.ts`](../src/lib/lastDirectory.ts), applied in [`src/lib/system.ts`](../src/lib/system.ts).
+
+Not one global directory: pickers are extension-filtered, and that filter decides whether a remembered folder is any use. Reopening the video trimmer where PNGs were last picked shows an empty dialog — worse than no memory. Not per-tool either: within a media kind the directory is nearly always the same, and per-tool memory would make someone navigate to the same folder three times to crop, resize and compress one batch of photos.
+
+**The key is not `ToolCategory`.** Images → PDF is category `pdf` but picks images, so category would send it to the wrong folder. If a future tool's picker doesn't match its category, follow the picker.
+
+A kind used for the first time falls back to the last directory picked anywhere. A remembered path is checked with the `directory_exists` command before it reaches the dialog — drives get unplugged and folders deleted between sessions.
+
+Both halves live in `system.ts`, so a new tool inherits this by calling an existing picker.
+
+---
+
+## What tool options are remembered, and what isn't
+
+Remember a setting if it expresses **how the user works**; don't if it is derived from **the file in front of them**. Formats, quality dials, page size, fit mode and the fade toggles stick. Crop rects, trim windows and resize dimensions don't.
+
+Two consequences that look like bugs if you don't know the rule:
+
+- **Lock toggles persist as a boolean only** (Image Crop proportions, Image Resize aspect). The ratio is re-derived from whichever image just loaded, so the lock never drags one image's shape onto the next.
+- **Image Resize `background` is deliberately not remembered.** It is defaulted per picked file from whether the source format carries alpha, so a stored value would be clobbered on every pick. It is content-derived, not a preference.
+
+Preview volume is app-scoped ([`src/lib/playbackPrefs.ts`](../src/lib/playbackPrefs.ts)), not per-tool: the Video Trimmer and Video Compress show the same preview, and turning the sound down means it for both.
+
+`reset()` ("Convert another") clears the job and leaves options alone. Resetting them there would undo the user's settings on the most common path through a tool.
+
+---
+
 ## Image Compress: per-source strategy, slider default 0.8, EXIF stripped
 
 The Image Compress tool re-encodes via a per-source strategy keyed on the file's **extension** (matching the [`image_crop`](../src-tauri/multitool-core/src/tools/image_crop/) "extension wins for output, bytes win for decode" rule):
