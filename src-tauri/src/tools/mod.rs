@@ -31,6 +31,8 @@ pub fn register_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri
         crate::preview_proxy::prepare_preview_proxy,
         crate::preview_proxy::cleanup_preview_proxy,
         crate::preview_proxy::cleanup_stale_proxies,
+        crate::settings::load_settings,
+        crate::settings::save_settings,
         crate::system::supported_raster_formats,
         crate::system::file_size,
         audio_extractor::extract_audio,
