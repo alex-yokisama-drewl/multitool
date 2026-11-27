@@ -19,7 +19,12 @@
 
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { create } from "zustand";
-import { loadSettings, saveSettings, type SettingsDoc } from "./settings";
+// Imported by its aliased path, not relatively: `vite.config.ts` swaps
+// `@/lib/settings` for the e2e mock by exact specifier, and `./settings`
+// would slip past that alias and reach the real IPC wrapper in the e2e
+// lane. The same applies to any future module here that the e2e lane
+// needs to stub.
+import { loadSettings, saveSettings, type SettingsDoc } from "@/lib/settings";
 
 /**
  * How long to sit on a change before writing. Long enough that dragging a
