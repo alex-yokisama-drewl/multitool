@@ -51,3 +51,21 @@ export function formatBytes(bytes: number): string {
     unit === 0 ? n.toString() : n < 100 ? n.toFixed(1) : n.toFixed(0);
   return `${sign}${formatted} ${units[unit] ?? "B"}`;
 }
+
+/**
+ * Directory portion of a path-like string. Handles both separators so a
+ * picked path from Tauri's dialog behaves the same on every OS.
+ *
+ * Returns `""` when there is no parent to speak of (a bare filename), and
+ * keeps the root separator for a top-level file (`/a.txt` → `/`). Trailing
+ * separators are ignored, so a directory path returns its own parent rather
+ * than itself.
+ */
+export function parentDir(path: string): string {
+  const trimmed = path.replace(/[\\/]+$/, "");
+  const cut = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  if (cut < 0) return "";
+  // Root-level file: keep the separator, since "" would mean "unknown".
+  if (cut === 0) return trimmed.slice(0, 1);
+  return trimmed.slice(0, cut);
+}

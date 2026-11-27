@@ -7,11 +7,8 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { pickPdfFile, revealInFolder } from "@/lib/system";
 import { convertPdfToImages } from "@/lib/tools/pdfToImages";
+import { DPI_DEFAULT, DPI_MAX, DPI_MIN, prefs } from "./prefs";
 import type { AppErrorEnvelope, Format, JobResult, Progress } from "./types";
-
-const DPI_MIN = 72;
-const DPI_MAX = 600;
-const DPI_DEFAULT = 150;
 
 type ViewState =
   | { kind: "idle" }
@@ -28,8 +25,7 @@ function fileName(path: string): string {
 export function PdfToImages() {
   const navigate = useNavigate();
   const [state, setState] = useState<ViewState>({ kind: "idle" });
-  const [format, setFormat] = useState<Format>("png");
-  const [dpi, setDpi] = useState<number>(DPI_DEFAULT);
+  const [{ format, dpi }, setOption] = prefs.use();
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -75,10 +71,11 @@ export function PdfToImages() {
 
   const cancel = () => abortRef.current?.abort();
 
+  // Clears the job, not the options: snapping format and DPI back to
+  // defaults here would undo the user's remembered settings on the most
+  // common path through the tool.
   const reset = () => {
     setState({ kind: "idle" });
-    setFormat("png");
-    setDpi(DPI_DEFAULT);
   };
 
   return (
@@ -117,7 +114,7 @@ export function PdfToImages() {
             <legend className="text-sm font-medium">Format</legend>
             <RadioGroup
               value={format}
-              onValueChange={(value) => setFormat(value as Format)}
+              onValueChange={(value) => setOption("format", value as Format)}
               className="flex gap-6"
             >
               <div className="flex items-center gap-2">
@@ -141,7 +138,7 @@ export function PdfToImages() {
               value={dpi}
               onChange={(event) => {
                 const next = Number(event.target.value);
-                setDpi(Number.isFinite(next) ? next : DPI_DEFAULT);
+                setOption("dpi", Number.isFinite(next) ? next : DPI_DEFAULT);
               }}
               className="w-32"
             />

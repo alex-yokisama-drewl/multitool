@@ -4,6 +4,7 @@ pub mod asset_scope;
 pub mod fs;
 pub mod ipc;
 pub mod preview_proxy;
+pub mod settings;
 pub mod system;
 pub mod tools;
 

@@ -16,6 +16,8 @@ import {
   probeVideoDuration,
 } from "@/lib/tools/videoTrimmer";
 import { compressVideo } from "@/lib/tools/videoCompress";
+import { playbackPrefs } from "@/lib/playbackPrefs";
+import { prefs } from "./prefs";
 import { fileName } from "@/lib/utils";
 import type { AppErrorEnvelope, JobResult, Opts } from "./types";
 
@@ -57,7 +59,6 @@ function toEnvelope(err: unknown, fallback: string): AppErrorEnvelope {
 // pixels. (The Rust side rounds to an integer CRF anyway, so finer
 // granularity past this just produces no-ops.)
 const SLIDER_STEPS = 1000;
-const DEFAULT_QUALITY = 0.5;
 
 export function VideoCompress() {
   const navigate = useNavigate();
@@ -65,10 +66,10 @@ export function VideoCompress() {
 
   // Slider value lives outside ViewState so it survives picked ↔ running
   // transitions; re-initialised only on full reset.
-  const [quality, setQuality] = useState(DEFAULT_QUALITY);
+  const [{ quality }, setOption] = prefs.use();
   const [currentMs, setCurrentMs] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [volume, setVolume] = useState(1);
+  const [{ volume }, setPlayback] = playbackPrefs.use();
 
   const abortRef = useRef<AbortController | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -198,7 +199,7 @@ export function VideoCompress() {
   const onVolumeChange = (pct: number) => {
     const vol = Math.max(0, Math.min(1, pct / 100));
     if (videoRef.current) videoRef.current.volume = vol;
-    setVolume(vol);
+    setPlayback("volume", vol);
   };
 
   const compress = async () => {
@@ -387,7 +388,7 @@ export function VideoCompress() {
                 max={SLIDER_STEPS}
                 value={Math.round(quality * SLIDER_STEPS)}
                 onChange={(e) =>
-                  setQuality(Number(e.target.value) / SLIDER_STEPS)
+                  setOption("quality", Number(e.target.value) / SLIDER_STEPS)
                 }
                 className="flex-1 accent-primary"
               />

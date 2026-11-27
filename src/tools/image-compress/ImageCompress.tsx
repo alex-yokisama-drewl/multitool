@@ -10,6 +10,7 @@ import {
   revealInFolder,
 } from "@/lib/system";
 import { compressImages } from "@/lib/tools/imageCompress";
+import { prefs } from "./prefs";
 import { fileName, fileStem, formatBytes } from "@/lib/utils";
 import type {
   AppErrorEnvelope,
@@ -52,7 +53,6 @@ const SLIDER_STEPS = 1000;
 // for most JPEGs while still indistinguishable at typical viewing sizes.
 // Higher than the video-compress default (0.5) because JPEG/WebP at
 // midpoint is more aggressive than CRF-50 on video.
-const DEFAULT_QUALITY = 0.8;
 
 // Mirrors the Rust strategy in `image_compress::convert::strategy_for`.
 // JPEG inputs preserve their source-extension spelling (`.jpg` stays
@@ -119,8 +119,11 @@ export function ImageCompress() {
   const [state, setState] = useState<ViewState>({ kind: "idle" });
 
   // Quality lives outside ViewState so it survives staging ↔ running
-  // transitions; re-initialised only on full reset.
-  const [quality, setQuality] = useState(DEFAULT_QUALITY);
+  // transitions, and in prefs so they survive the app closing.
+  const [{ quality }, setOption] = prefs.use();
+  const setQuality = (next: number) => {
+    setOption("quality", next);
+  };
 
   const abortRef = useRef<AbortController | null>(null);
 

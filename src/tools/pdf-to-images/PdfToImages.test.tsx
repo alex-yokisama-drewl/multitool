@@ -2,11 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
-const { convertMock, pickPdfFileMock, revealInFolderMock } = vi.hoisted(() => ({
-  convertMock: vi.fn(),
-  pickPdfFileMock: vi.fn(),
-  revealInFolderMock: vi.fn(),
-}));
+const { convertMock, pickPdfFileMock, revealInFolderMock, invokeMock } =
+  vi.hoisted(() => ({
+    convertMock: vi.fn(),
+    pickPdfFileMock: vi.fn(),
+    revealInFolderMock: vi.fn(),
+    invokeMock: vi.fn(),
+  }));
+
+// Mocked at the Tauri seam rather than at `@/lib/settings` so the real
+// prefs plumbing is exercised: a tool's remembered options only mean
+// anything if they survive that whole path.
+vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 vi.mock("@/lib/tools/pdfToImages", () => ({
   convertPdfToImages: convertMock,
@@ -16,6 +23,7 @@ vi.mock("@/lib/system", () => ({
   revealInFolder: revealInFolderMock,
 }));
 
+import { hydratePrefs } from "@/lib/prefs";
 import { PdfToImages } from "./PdfToImages";
 
 function renderTool() {
@@ -24,6 +32,16 @@ function renderTool() {
       <PdfToImages />
     </MemoryRouter>,
   );
+}
+
+/** Load a settings document as if the app had just started with it. */
+async function startWithStoredOptions(entries: Record<string, unknown>) {
+  invokeMock.mockImplementation((command: string) =>
+    command === "load_settings"
+      ? Promise.resolve({ version: 1, entries })
+      : Promise.resolve(undefined),
+  );
+  await hydratePrefs();
 }
 
 async function pickAndShowForm(path = "/tmp/in.pdf") {
@@ -37,6 +55,8 @@ describe("PdfToImages", () => {
     convertMock.mockReset();
     pickPdfFileMock.mockReset();
     revealInFolderMock.mockReset();
+    invokeMock.mockReset();
+    invokeMock.mockResolvedValue(undefined);
   });
 
   it("defaults to PNG format and DPI 150 once a file is picked", async () => {
@@ -155,5 +175,55 @@ describe("PdfToImages", () => {
     expect(capturedSignal?.aborted).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
     expect(capturedSignal?.aborted).toBe(true);
+  });
+  it("renders the remembered format and DPI instead of the defaults", async () => {
+    await startWithStoredOptions({
+      "tool:pdf-to-images": { format: "jpeg", dpi: 300 },
+    });
+
+    renderTool();
+    await pickAndShowForm();
+
+    expect(screen.getByLabelText("JPEG")).toBeChecked();
+    expect(screen.getByLabelText(/dpi/i)).toHaveValue(300);
+  });
+
+  it("falls back to defaults for an option whose stored value is junk", async () => {
+    await startWithStoredOptions({
+      "tool:pdf-to-images": { format: "heic", dpi: 300 },
+    });
+
+    renderTool();
+    await pickAndShowForm();
+
+    // The unknown format falls back; the good DPI beside it survives.
+    expect(screen.getByLabelText("PNG")).toBeChecked();
+    expect(screen.getByLabelText(/dpi/i)).toHaveValue(300);
+  });
+
+  it("keeps the chosen options after 'Convert another'", async () => {
+    renderTool();
+    await pickAndShowForm("/tmp/doc.pdf");
+
+    fireEvent.click(screen.getByLabelText("JPEG"));
+    fireEvent.change(screen.getByLabelText(/dpi/i), {
+      target: { value: "300" },
+    });
+
+    convertMock.mockResolvedValueOnce({
+      output_dir: "/tmp/doc_pages",
+      page_count: 1,
+      duration_ms: 1,
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^convert$/i }));
+    await screen.findByRole("button", { name: /convert another/i });
+
+    fireEvent.click(screen.getByRole("button", { name: /convert another/i }));
+    await pickAndShowForm("/tmp/next.pdf");
+
+    // Resetting the job must not reset the options — that would undo the
+    // user's settings on the most common path through the tool.
+    expect(screen.getByLabelText("JPEG")).toBeChecked();
+    expect(screen.getByLabelText(/dpi/i)).toHaveValue(300);
   });
 });

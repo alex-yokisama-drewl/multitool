@@ -26,7 +26,7 @@ If a request conflicts with ARCHITECTURE, surface the conflict rather than silen
 
 ### Rust
 - `cargo fmt` and `cargo clippy --workspace --all-targets -- -D warnings` must pass before commit
-- No `unwrap()` or `expect()` in non-test code; use typed `Result<T, AppError>` variants (see [ARCHITECTURE §3.4](docs/ARCHITECTURE.md#34-error-handling))
+- No `unwrap()` or `expect()` in non-test code; use typed `Result<T, AppError>` variants (see [ARCHITECTURE §3.5](docs/ARCHITECTURE.md#35-error-handling))
 - `clippy::unwrap_used` is denied at the crate level
 - Every long-running command takes a cancellation token
 

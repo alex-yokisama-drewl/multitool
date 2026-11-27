@@ -38,3 +38,20 @@ pub fn file_size(path: PathBuf) -> Result<u64, AppError> {
         }),
     }
 }
+
+/// Report whether `path` exists and is a directory.
+///
+/// The frontend validates a remembered last-used directory before handing
+/// it to the file dialog as `defaultPath`: removable drives get unplugged
+/// and folders get deleted between sessions, and a dialog pointed at a
+/// vanished path behaves differently on every platform. Returning `false`
+/// lets the caller fall through to the next candidate.
+///
+/// Returns `bool` rather than `Result` on purpose — "I could not tell" and
+/// "it is not there" lead to the same fallback, so a symlink loop or a
+/// permission-denied stat is simply `false`. Same reasoning as
+/// `file_size` picking a narrow command over a `tauri-plugin-fs` dep.
+#[tauri::command]
+pub fn directory_exists(path: PathBuf) -> bool {
+    std::fs::metadata(&path).is_ok_and(|meta| meta.is_dir())
+}

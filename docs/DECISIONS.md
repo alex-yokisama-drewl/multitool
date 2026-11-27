@@ -6,6 +6,61 @@ Choices, caveats, and recipes that affect future work — patterns we must keep 
 
 ---
 
+## Settings memory: hand-rolled JSON document, frontend-owned schemas
+
+User settings (last-used directory, remembered tool options) persist in a versioned JSON document in Tauri's app-config dir. Two commands — [`load_settings` / `save_settings`](../src-tauri/src/settings/mod.rs) — over pure logic in [`multitool_core::settings`](../src-tauri/multitool-core/src/settings.rs); the app-config path resolves through [`crate::fs::settings_path`](../src-tauri/src/fs/mod.rs), the first helper that module earned.
+
+Rejected `tauri-plugin-store` (a new dep + capability grant for a generic key-value API wider than we need) and webview `localStorage` (not an inspectable file, wiped with webview data, puts durable state outside the Rust boundary). Follows the `file_size` precedent: a narrow command beats a generic plugin.
+
+Three properties worth not reverting:
+
+- **The document is an opaque string-keyed blob.** Rust validates the envelope — version, object shape, a size ceiling — and nothing inside it. Every schema lives in the frontend ([`src/lib/prefs.ts`](../src/lib/prefs.ts) + each tool's `prefs.ts`). This is what keeps the registry contract intact: a new tool declares its own prefs in its own folder and no shared Rust code changes. Typing the entries in Rust would make every option change a two-sided edit.
+- **Loading never fails.** Missing, corrupt, oversized or foreign-version all resolve to defaults, with a `LoadOutcome` for the shell to log. Losing preferences is an annoyance; refusing to start is a bug. Saving is atomic (temp + rename) because writes are debounced while the user is still clicking.
+- **Nothing is written before hydration succeeds.** An unhydrated store is an in-memory session store. Otherwise a failed load would clobber real settings with defaults on the first interaction — and it also keeps Vitest and plain-browser runs from attempting IPC.
+
+Every stored value is sanitized per field on read, falling back to the default rather than forwarding junk to Rust; one bad option doesn't discard the good ones beside it. Range-clamping sanitizers (`numberIn`) are only for slider-backed options. **For a free-typed number field use `finiteNumber`** — clamping on read fights the user mid-keystroke, since typing `7` on the way to `700` would snap the field to the minimum. Those options clamp in Rust, where they already did.
+
+**Where the file is.** `settings.json` under Tauri's `app_config_dir()` for identifier `com.drewl.multitool` — `~/.config/com.drewl.multitool/` on Linux, `~/Library/Application Support/com.drewl.multitool/` on macOS, `%APPDATA%\com.drewl.multitool\` on Windows. It is plain pretty-printed JSON, safe to read or hand-edit: anything the sanitizers reject falls back to a default.
+
+**There is no reset-to-defaults UI.** Deleting that file is the escape hatch — the next launch loads defaults and rewrites it. Backlogged as an affordance; until then it is the answer to "my settings are stuck in a weird state".
+
+**Bump `SETTINGS_VERSION` only for a change the frontend's sanitizers cannot absorb.** Field-level drift — an option added, removed, or whose variants changed — is already handled per field on read, and bumping throws away every unrelated preference with it.
+
+**Gotcha for future shared modules under `src/lib/`:** import anything the e2e lane stubs by its aliased path (`@/lib/settings`), not relatively. `vite.config.ts` swaps mocks by exact specifier, so `./settings` slips past the alias and reaches the real IPC wrapper.
+
+**Writes are debounced, which leaks into tests.** `flushPrefs()` forces the pending write and awaits it; `resetPrefsForTest()` drops in-memory state and any scheduled write. A Playwright spec that drops the page has to outlast the debounce window first (`WRITE_DEBOUNCE_MS` in [`src/lib/prefs.ts`](../src/lib/prefs.ts)) — see [`tests/e2e/settings-memory.spec.ts`](../tests/e2e/settings-memory.spec.ts).
+
+---
+
+## Directory memory is keyed by picker media kind
+
+The last-used directory is remembered per media kind — `pdf` / `image` / `audio` / `video` — in [`src/lib/lastDirectory.ts`](../src/lib/lastDirectory.ts), applied in [`src/lib/system.ts`](../src/lib/system.ts).
+
+Not one global directory: pickers are extension-filtered, and that filter decides whether a remembered folder is any use. Reopening the video trimmer where PNGs were last picked shows an empty dialog — worse than no memory. Not per-tool either: within a media kind the directory is nearly always the same, and per-tool memory would make someone navigate to the same folder three times to crop, resize and compress one batch of photos.
+
+**The key is not `ToolCategory`.** Images → PDF is category `pdf` but picks images, so category would send it to the wrong folder. If a future tool's picker doesn't match its category, follow the picker.
+
+A kind used for the first time falls back to the last directory picked anywhere. A remembered path is checked with the `directory_exists` command before it reaches the dialog — drives get unplugged and folders deleted between sessions.
+
+Both halves live in `system.ts`, so a new tool inherits this by calling an existing picker.
+
+---
+
+## What tool options are remembered, and what isn't
+
+Remember a setting if it expresses **how the user works**; don't if it is derived from **the file in front of them**. Formats, quality dials, page size, fit mode and the fade toggles stick. Crop rects, trim windows and resize dimensions don't.
+
+Two consequences that look like bugs if you don't know the rule:
+
+- **Lock toggles persist as a boolean only** (Image Crop proportions, Image Resize aspect). The ratio is re-derived from whichever image just loaded, so the lock never drags one image's shape onto the next.
+- **Image Resize `background` is deliberately not remembered.** It is defaulted per picked file from whether the source format carries alpha, so a stored value would be clobbered on every pick. It is content-derived, not a preference.
+
+Preview volume is app-scoped ([`src/lib/playbackPrefs.ts`](../src/lib/playbackPrefs.ts)), not per-tool: the Video Trimmer and Video Compress show the same preview, and turning the sound down means it for both.
+
+`reset()` ("Convert another") clears the job and leaves options alone. Resetting them there would undo the user's settings on the most common path through a tool.
+
+---
+
 ## Image Compress: per-source strategy, slider default 0.8, EXIF stripped
 
 The Image Compress tool re-encodes via a per-source strategy keyed on the file's **extension** (matching the [`image_crop`](../src-tauri/multitool-core/src/tools/image_crop/) "extension wins for output, bytes win for decode" rule):
@@ -74,7 +129,7 @@ The Video Trimmer (commits `b6c4422…`; engine re-cut to frame-accurate at `b3c
   1. **WebKitGTK's `<video>` can't load Tauri's asset-protocol scheme at all** (its GStreamer pipeline rejects the custom scheme → `play()` throws `NotSupportedError`), regardless of codec. But `fetch()` on the asset URL works (same path the Audio Trimmer relies on). So the UI `fetch`es the proxy bytes and plays them from `URL.createObjectURL(blob)`.
   2. **WebKitGTK decodes H.264/AAC only with proprietary gstreamer plugins** that often aren't installed. So the proxy is **VP9/Opus in WebM** (`-deadline realtime -cpu-used 8 -crf 32`, scaled ≤1280w) — open codecs it ships with. An mp4/H.264 proxy fails exactly where the fallback is needed.
 
-  Net: every pick transcodes a small WebM proxy ([`proxy.rs`](../src-tauri/multitool-core/src/tools/video_trimmer/proxy.rs)) to the OS temp dir, the frontend fetches+blobs it, and the trim still runs against the **original** file. Don't "optimize" this back to a native `<video src={assetUrl}>` — it'll work on Chromium/WebView2 and silently break on Linux.
+  Net: every pick transcodes a small WebM proxy ([`proxy.rs`](../src-tauri/multitool-core/src/video/proxy.rs)) to the OS temp dir, the frontend fetches+blobs it, and the trim still runs against the **original** file. Don't "optimize" this back to a native `<video src={assetUrl}>` — it'll work on Chromium/WebView2 and silently break on Linux.
 - **Preview proxies are swept on tool mount, not just per-pick.** A hard app-close tears down the WebView without running React unmount cleanup, orphaning the in-flight proxy. `cleanup_stale_proxies` deletes every `multitool-preview-*.webm` in the temp dir (all throwaway) and runs when the tool mounts; per-pick/reset teardown handles the in-session case. Both `cleanup_*` commands are guarded to the temp dir + the `multitool-preview-` prefix so a stray IPC call can't unlink arbitrary files.
 - **Duration comes from a backend probe, not `<video>.duration`.** `probe_video_duration` (wrapping `ffmpeg::probe_duration_secs`) sizes the trim window up front — reliable regardless of what the WebView can decode.
 - **Player playback is clamped to the trim window.** No native `controls` (fullscreen/speed/download leak inconsistently across WebViews); a minimal bar (play/pause + seek + volume) plays only `[start, end]`. Time helpers `formatMs`/`parseMs` + the `TimeInput` component were hoisted to [`src/lib/time.ts`](../src/lib/time.ts) + [`src/components/TimeInput.tsx`](../src/components/TimeInput.tsx) (shared with the Audio Trimmer).

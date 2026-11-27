@@ -6,6 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { pickVideoFiles, revealInFolder } from "@/lib/system";
 import { convertVideoFormat } from "@/lib/tools/videoFormatConverter";
+import { prefs } from "./prefs";
 import { fileName } from "@/lib/utils";
 import type {
   AppErrorEnvelope,
@@ -39,7 +40,7 @@ export function VideoFormatConverter() {
 
   // Options outlive state transitions so the user's choices survive
   // between picks / retries — same pattern as AudioFormatConverter.
-  const [targetFormat, setTargetFormat] = useState<TargetFormat>("mp4");
+  const [{ targetFormat }, setOption] = prefs.use();
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -178,7 +179,9 @@ export function VideoFormatConverter() {
             <legend className="text-sm font-medium">Target format</legend>
             <RadioGroup
               value={targetFormat}
-              onValueChange={(value) => setTargetFormat(value as TargetFormat)}
+              onValueChange={(value) =>
+                setOption("targetFormat", value as TargetFormat)
+              }
               className="flex flex-wrap gap-6"
             >
               <div className="flex items-center gap-2">

@@ -13,6 +13,7 @@ pub mod fs;
 pub mod image;
 pub mod ipc;
 pub mod pdfium;
+pub mod settings;
 pub mod tools;
 pub mod video;
 

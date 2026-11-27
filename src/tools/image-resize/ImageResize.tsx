@@ -15,6 +15,7 @@ import {
   revealInFolder,
 } from "@/lib/system";
 import { resizeImage } from "@/lib/tools/imageResize";
+import { prefs } from "./prefs";
 import { fileName } from "@/lib/utils";
 import type { AppErrorEnvelope, Background, FitMode, JobResult } from "./types";
 
@@ -53,7 +54,9 @@ export function ImageResize() {
   const [width, setWidth] = useState<number>(0);
   const [height, setHeight] = useState<number>(0);
   const [lockedRatio, setLockedRatio] = useState<number | null>(null);
-  const [fit, setFit] = useState<FitMode>("contain");
+  // Only `fit` and the lock's boolean are remembered — width/height and
+  // background are both derived per picked image. See ./prefs.ts.
+  const [{ fit, lockAspect }, setOption] = prefs.use();
   const [background, setBackground] = useState<Background>("white");
 
   // Encodable-format set; gates the Transparent option per source ext.
@@ -131,16 +134,18 @@ export function ImageResize() {
     setState({ kind: "picked", path: picked });
   };
 
-  // Image finished loading → capture natural dims, populate inputs,
-  // default the lock to ON anchored to the natural aspect.
+  // Image finished loading → capture natural dims, populate inputs, and
+  // anchor the lock to the natural aspect when the remembered preference
+  // has it on (it defaults on).
   const handleImageLoad = (w: number, h: number) => {
     setDims({ width: w, height: h });
     setWidth(w);
     setHeight(h);
-    setLockedRatio(h > 0 ? w / h : null);
+    setLockedRatio(lockAspect && h > 0 ? w / h : null);
   };
 
   const toggleProportional = (locked: boolean) => {
+    setOption("lockAspect", locked);
     // Capture the current W/H ratio at the instant the lock turns on —
     // matches imageCrop's pattern. If the user hasn't touched the inputs
     // yet, this naturally captures the source aspect.
@@ -282,7 +287,9 @@ export function ImageResize() {
                   <legend className="text-sm font-medium">Fit</legend>
                   <RadioGroup
                     value={fit}
-                    onValueChange={(value) => setFit(value as FitMode)}
+                    onValueChange={(value) =>
+                      setOption("fit", value as FitMode)
+                    }
                     className="flex flex-wrap gap-6"
                   >
                     <div className="flex items-center gap-2">

@@ -10,6 +10,7 @@ import {
   revealInFolder,
 } from "@/lib/system";
 import { cropImage } from "@/lib/tools/imageCrop";
+import { prefs } from "./prefs";
 import { fileName } from "@/lib/utils";
 import { CropFrame } from "./CropFrame";
 import { fullFrame, withHeight, withWidth, withX, withY } from "./cropGeometry";
@@ -41,6 +42,9 @@ export function ImageCrop() {
     height: 0,
   });
   const [lockedRatio, setLockedRatio] = useState<number | null>(null);
+  // Only the toggle is remembered; the ratio above is always re-derived
+  // from the image currently loaded.
+  const [{ lockProportions }, setOption] = prefs.use();
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -69,13 +73,20 @@ export function ImageCrop() {
   };
 
   // Image finished loading → capture natural dims and reset the frame to
-  // cover the whole image.
+  // cover the whole image. Re-anchors the lock to the new image when the
+  // remembered preference has it on — the toggle persists, the ratio never
+  // does.
   const handleImageLoad = (width: number, height: number) => {
     setDims({ width, height });
-    setRect(fullFrame(width, height));
+    const frame = fullFrame(width, height);
+    setRect(frame);
+    setLockedRatio(
+      lockProportions && frame.height > 0 ? frame.width / frame.height : null,
+    );
   };
 
   const toggleProportional = (locked: boolean) => {
+    setOption("lockProportions", locked);
     // Capture the current ratio at the instant the lock turns on.
     setLockedRatio(locked && rect.height > 0 ? rect.width / rect.height : null);
   };
