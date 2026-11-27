@@ -35,6 +35,7 @@ pub fn register_commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri
         crate::settings::save_settings,
         crate::system::supported_raster_formats,
         crate::system::file_size,
+        crate::system::directory_exists,
         audio_extractor::extract_audio,
         audio_format_converter::convert_audio_format,
         audio_trimmer::trim_audio,
