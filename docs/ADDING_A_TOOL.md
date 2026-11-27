@@ -90,6 +90,9 @@ System-level wrappers (file picker, reveal-in-folder) live in [`src/lib/system.t
 | Rust orchestrator (`job.rs`) | `cargo test -p multitool-core` | Happy path, cancellation, missing input, typed errors, `unique_path` collision. |
 | TS IPC wrapper | Vitest, `@tauri-apps/api/{core,event}` mocked via `vi.hoisted` | Invokes the right command, progress filtered by JobId, listener unsubscribed on both success + error, AbortSignal abort → `cancel_job`, error envelope round-trip. |
 | React component | Vitest + Testing Library, `@/lib/*` mocked | Defaults render, options forwarded, progress text renders, error envelope renders, Cancel aborts the signal. |
+| React component, tools with a `prefs.ts` | Same, plus `@tauri-apps/api/core`'s `invoke` mocked via `vi.hoisted` | Remembered values render instead of defaults, a junk stored value falls back without taking the good fields with it, and `reset()` keeps the options. Mock at the Tauri seam rather than at `@/lib/settings`, so the real prefs plumbing is exercised; drive hydration with a `load_settings` response. Worked example: [`PdfToImages.test.tsx`](../src/tools/pdf-to-images/PdfToImages.test.tsx). |
+
+[`tests/setup.ts`](../tests/setup.ts) resets the prefs store before every test, so one test's option change can't leak into the next one's "renders its defaults" assertion. It imports the store lazily — a top-level import there would instantiate `@tauri-apps/api/core` before a test file's `vi.mock` could register, and the mock would silently never apply.
 
 ### 8. Stop. Ask the user for a manual smoke session.
 
