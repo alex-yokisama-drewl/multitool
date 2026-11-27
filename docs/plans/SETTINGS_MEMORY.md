@@ -95,11 +95,11 @@ options alone — otherwise the feature defeats itself on the most common path.
 
 | # | Commit | Status | SHA | Notes |
 | --- | --- | --- | --- | --- |
-| 1 | `docs(settings): working doc + backlog entry for B&W normalizer` | pending | | |
-| 2 | `feat(settings): versioned JSON settings store in multitool-core` | pending | | |
-| 3 | `feat(settings): load/save Tauri commands + app-config path resolution` | pending | | |
-| 4 | `feat(settings): frontend prefs store + IPC wrapper` | pending | | |
-| 5 | `feat(settings): remember last directory per picker media kind` | pending | | |
+| 1 | `docs(settings): working doc + backlog entry for B&W normalizer` | done | `7357d80` | — |
+| 2 | `feat(settings): versioned JSON settings store in multitool-core` | done | `2987ce6` | `serde_json` moved from dev-dependency to a real one — it is the storage format now. |
+| 3 | `feat(settings): load/save Tauri commands + app-config path resolution` | done | `eec6a78` | Gotcha: commands inside `generate_handler!` must be generic over `R: Runtime` (`AppHandle<R>`, not `AppHandle`) because `register_commands` is generic. A bare `AppHandle` fails to compile with an unhelpful serde trait error. |
+| 4 | `feat(settings): frontend prefs store + IPC wrapper` | done | `2ffb1cf` | Two gotchas: `useSyncExternalStore` must subscribe to the **raw** stored entry, not the sanitized object — sanitizing allocates and snapshots are compared by identity, so a fresh object each call is an infinite render loop. And `definePrefs` needs `NoInfer` on `defaults` so the shape infers from the sanitizers; otherwise an inline `"png"` widens to `string` and the literal union is lost. |
+| 5 | `feat(settings): remember last directory per picker media kind` | done | `f5f8b64` | Pure logic split into `src/lib/lastDirectory.ts` so it is testable without mocking the dialog plugin; `system.ts` keeps the IPC. Added a `directory_exists` command for the staleness check. |
 | 6 | `feat(settings): persist tool options` | pending | | |
 | 7 | `test(settings): e2e coverage` | pending | | |
 | 8 | `docs(settings): DECISIONS entry` | pending | | |
