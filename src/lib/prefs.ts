@@ -154,6 +154,29 @@ export function numberIn(
   };
 }
 
+/**
+ * Accept any finite number, optionally rounded — no range clamp.
+ *
+ * For options bound to a free-typed `<input type="number">`. Clamping those
+ * on read would fight the user mid-keystroke: typing `7` on the way to `700`
+ * would snap the field to the minimum, and the next keystroke would compound
+ * it. The real range clamp for these already lives in Rust (DPI, resize
+ * dimensions and the quality dials all clamp silently in `convert`), so this
+ * only has to guarantee a number.
+ *
+ * Use {@link numberIn} instead whenever the control itself constrains the
+ * value — a slider can't produce an out-of-range number, so clamping it
+ * costs nothing.
+ */
+export function finiteNumber({
+  integer = false,
+}: { integer?: boolean } = {}): Sanitizer<number> {
+  return (raw, fallback) => {
+    if (typeof raw !== "number" || !Number.isFinite(raw)) return fallback;
+    return integer ? Math.round(raw) : raw;
+  };
+}
+
 export function bool(): Sanitizer<boolean> {
   return (raw, fallback) => (typeof raw === "boolean" ? raw : fallback);
 }

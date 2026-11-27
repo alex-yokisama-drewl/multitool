@@ -13,6 +13,7 @@ import {
   probeVideoDuration,
   trimVideo,
 } from "@/lib/tools/videoTrimmer";
+import { playbackPrefs } from "@/lib/playbackPrefs";
 import { fileName } from "@/lib/utils";
 import { VideoScrubber } from "./VideoScrubber";
 import type { AppErrorEnvelope, JobResult, Opts } from "./types";
@@ -60,7 +61,7 @@ export function VideoTrimmer() {
   const [endMs, setEndMs] = useState(0);
   const [currentMs, setCurrentMs] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [volume, setVolume] = useState(1);
+  const [{ volume }, setPlayback] = playbackPrefs.use();
 
   const abortRef = useRef<AbortController | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -241,7 +242,7 @@ export function VideoTrimmer() {
   const onVolumeChange = (pct: number) => {
     const vol = Math.max(0, Math.min(1, pct / 100));
     if (videoRef.current) videoRef.current.volume = vol;
-    setVolume(vol);
+    setPlayback("volume", vol);
   };
 
   const trim = async () => {

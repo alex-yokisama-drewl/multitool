@@ -12,6 +12,7 @@ import {
 import { allowMediaPreview, pickAudioFile, revealInFolder } from "@/lib/system";
 import { formatMs } from "@/lib/time";
 import { trimAudio } from "@/lib/tools/audioTrimmer";
+import { prefs } from "./prefs";
 import { fileName } from "@/lib/utils";
 import { Waveform } from "./Waveform";
 import type { AppErrorEnvelope, JobResult, Opts } from "./types";
@@ -45,8 +46,9 @@ export function AudioTrimmer() {
   // each fresh pick (see the load `useEffect` below).
   const [startMs, setStartMs] = useState(0);
   const [endMs, setEndMs] = useState(0);
-  const [fadeIn, setFadeIn] = useState(false);
-  const [fadeOut, setFadeOut] = useState(false);
+  // Fades are a habit ("I always fade my clips"), so they persist; the
+  // trim window above never does — it belongs to this clip.
+  const [{ fadeIn, fadeOut }, setOption] = prefs.use();
 
   const abortRef = useRef<AbortController | null>(null);
   const previewRef = useRef<PreviewPlayer | null>(null);
@@ -86,8 +88,6 @@ export function AudioTrimmer() {
       const source = await loadAudioPreview(picked);
       setStartMs(0);
       setEndMs(source.durationMs);
-      setFadeIn(false);
-      setFadeOut(false);
       setState({ kind: "picked", path: picked, source });
     } catch (err) {
       const envelope: AppErrorEnvelope =
@@ -160,11 +160,11 @@ export function AudioTrimmer() {
   };
   const onFadeInToggle = (b: boolean) => {
     stopPreview();
-    setFadeIn(b);
+    setOption("fadeIn", b);
   };
   const onFadeOutToggle = (b: boolean) => {
     stopPreview();
-    setFadeOut(b);
+    setOption("fadeOut", b);
   };
 
   const trim = async () => {

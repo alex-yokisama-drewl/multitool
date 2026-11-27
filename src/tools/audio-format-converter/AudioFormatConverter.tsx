@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { pickConvertibleAudio, revealInFolder } from "@/lib/system";
 import { convertAudioFormat } from "@/lib/tools/audioFormatConverter";
+import { prefs } from "./prefs";
 import { fileName } from "@/lib/utils";
 import type {
   AppErrorEnvelope,
@@ -40,12 +41,11 @@ export function AudioFormatConverter() {
   const [state, setState] = useState<ViewState>({ kind: "idle" });
 
   // Options live outside ViewState so the user's choices survive state
-  // transitions — same pattern as ImageFormatConverter.
-  const [targetFormat, setTargetFormat] = useState<TargetFormat>("mp3");
-  const [mp3BitrateKbps, setMp3BitrateKbps] = useState<number>(192);
-  const [vorbisQuality, setVorbisQuality] = useState<number>(5);
-  const [wavBitDepth, setWavBitDepth] = useState<WavBitDepth>("bit16");
-  const [channels, setChannels] = useState<ChannelMode>("source");
+  // transitions, and in prefs so they survive the app closing.
+  const [
+    { targetFormat, mp3BitrateKbps, vorbisQuality, wavBitDepth, channels },
+    setOption,
+  ] = prefs.use();
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -188,7 +188,9 @@ export function AudioFormatConverter() {
             <legend className="text-sm font-medium">Target format</legend>
             <RadioGroup
               value={targetFormat}
-              onValueChange={(value) => setTargetFormat(value as TargetFormat)}
+              onValueChange={(value) =>
+                setOption("targetFormat", value as TargetFormat)
+              }
               className="flex flex-wrap gap-6"
             >
               <div className="flex items-center gap-2">
@@ -222,7 +224,7 @@ export function AudioFormatConverter() {
                 max={MP3_BITRATE_MAX}
                 value={mp3BitrateKbps}
                 onChange={(event) =>
-                  setMp3BitrateKbps(Number(event.target.value) || 192)
+                  setOption("mp3BitrateKbps", Number(event.target.value) || 192)
                 }
                 className="w-24"
               />
@@ -243,7 +245,7 @@ export function AudioFormatConverter() {
                 max={VORBIS_QUALITY_MAX}
                 value={vorbisQuality}
                 onChange={(event) =>
-                  setVorbisQuality(Number(event.target.value) || 5)
+                  setOption("vorbisQuality", Number(event.target.value) || 5)
                 }
                 className="w-24"
               />
@@ -255,7 +257,9 @@ export function AudioFormatConverter() {
               <legend className="text-sm font-medium">WAV bit depth</legend>
               <RadioGroup
                 value={wavBitDepth}
-                onValueChange={(value) => setWavBitDepth(value as WavBitDepth)}
+                onValueChange={(value) =>
+                  setOption("wavBitDepth", value as WavBitDepth)
+                }
                 className="flex flex-wrap gap-6"
               >
                 <div className="flex items-center gap-2">
@@ -278,7 +282,9 @@ export function AudioFormatConverter() {
             <legend className="text-sm font-medium">Channels</legend>
             <RadioGroup
               value={channels}
-              onValueChange={(value) => setChannels(value as ChannelMode)}
+              onValueChange={(value) =>
+                setOption("channels", value as ChannelMode)
+              }
               className="flex flex-wrap gap-6"
             >
               <div className="flex items-center gap-2">

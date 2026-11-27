@@ -9,6 +9,7 @@ const {
   revealInFolderMock,
   imageAssetUrlMock,
   getRasterFormatsMock,
+  invokeMock,
 } = vi.hoisted(() => ({
   resizeMock: vi.fn(),
   pickRasterImageMock: vi.fn(),
@@ -16,7 +17,12 @@ const {
   revealInFolderMock: vi.fn(),
   imageAssetUrlMock: vi.fn((path: string) => `asset://${path}`),
   getRasterFormatsMock: vi.fn(),
+  invokeMock: vi.fn(),
 }));
+
+// Mocked at the Tauri seam rather than at `@/lib/settings` so the real
+// prefs plumbing is exercised end to end.
+vi.mock("@tauri-apps/api/core", () => ({ invoke: invokeMock }));
 
 vi.mock("@/lib/tools/imageResize", () => ({ resizeImage: resizeMock }));
 vi.mock("@/lib/system", () => ({
@@ -29,6 +35,7 @@ vi.mock("@/lib/imageFormats", () => ({
   getRasterFormats: getRasterFormatsMock,
 }));
 
+import { hydratePrefs } from "@/lib/prefs";
 import { ImageResize } from "./ImageResize";
 
 const PNG_PATH = "/tmp/photo.png";
@@ -60,7 +67,11 @@ function renderTool() {
 async function pickAndLoad(path: string, width: number, height: number) {
   pickRasterImageMock.mockResolvedValueOnce(path);
   allowMediaPreviewMock.mockResolvedValueOnce(undefined);
-  fireEvent.click(screen.getByRole("button", { name: /^select image$/i }));
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: /^select (image|a different image)$/i,
+    }),
+  );
 
   const img = await screen.findByAltText("Resize preview");
   Object.defineProperty(img, "naturalWidth", {
@@ -94,6 +105,8 @@ describe("ImageResize", () => {
     revealInFolderMock.mockReset();
     getRasterFormatsMock.mockReset();
     getRasterFormatsMock.mockResolvedValue(FORMATS);
+    invokeMock.mockReset();
+    invokeMock.mockResolvedValue(undefined);
   });
 
   it("renders idle with a Select image button", () => {
@@ -320,5 +333,62 @@ describe("ImageResize", () => {
     fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
 
     expect(capturedSignal?.aborted).toBe(true);
+  });
+  describe("remembered options", () => {
+    /** Load a settings document as if the app had just started with it. */
+    async function startWithStoredOptions(entries: Record<string, unknown>) {
+      invokeMock.mockImplementation((command: string) =>
+        command === "load_settings"
+          ? Promise.resolve({ version: 1, entries })
+          : Promise.resolve(undefined),
+      );
+      await hydratePrefs();
+    }
+
+    it("renders the remembered fit mode", async () => {
+      await startWithStoredOptions({ "tool:image-resize": { fit: "cover" } });
+
+      renderTool();
+      await pickAndLoad(PNG_PATH, 800, 600);
+      // Fit only shows once width/height diverge from the natural aspect,
+      // which needs the lock off first.
+      fireEvent.click(lockCheckbox());
+      fireEvent.change(widthInput(), { target: { value: "500" } });
+      fireEvent.blur(widthInput());
+
+      expect(screen.getByLabelText(/cover/i)).toBeChecked();
+    });
+
+    it("applies a remembered lock-off to the next image", async () => {
+      await startWithStoredOptions({
+        "tool:image-resize": { lockAspect: false },
+      });
+
+      renderTool();
+      await pickAndLoad(PNG_PATH, 800, 600);
+
+      expect(lockCheckbox()).not.toBeChecked();
+
+      // With the lock off, height must not follow width.
+      fireEvent.change(widthInput(), { target: { value: "400" } });
+      fireEvent.blur(widthInput());
+      expect(heightInput()).toHaveValue(600);
+    });
+
+    it("re-derives the locked ratio from each new image rather than storing it", async () => {
+      renderTool();
+      await pickAndLoad(PNG_PATH, 800, 600);
+      expect(lockCheckbox()).toBeChecked();
+
+      // A second image with a different aspect: the lock stays on, but the
+      // ratio it enforces must come from THIS image, not the last one.
+      await pickAndLoad(JPG_PATH, 1000, 250);
+      expect(lockCheckbox()).toBeChecked();
+
+      fireEvent.change(widthInput(), { target: { value: "500" } });
+      fireEvent.blur(widthInput());
+      // 4:1 from the new image, not 4:3 from the old one.
+      expect(heightInput()).toHaveValue(125);
+    });
   });
 });

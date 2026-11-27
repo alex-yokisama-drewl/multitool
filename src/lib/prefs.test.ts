@@ -1,15 +1,9 @@
 import { renderHook, act } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  loadSettings: vi.fn(),
-  saveSettings: vi.fn(),
-}));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
 
-vi.mock("./settings", () => ({
-  loadSettings: mocks.loadSettings,
-  saveSettings: mocks.saveSettings,
-}));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
 
 import {
   bool,
@@ -37,18 +31,28 @@ function makeGroup(key = "tool:example") {
   );
 }
 
-/** Put the store in the hydrated state a running app would be in. */
+/** Every `save_settings` document written so far, oldest first. */
+function savedDocs(): unknown[] {
+  return mocks.invoke.mock.calls
+    .filter((call) => call[0] === "save_settings")
+    .map((call) => (call[1] as { doc: unknown }).doc);
+}
+
+/** Point the IPC mock at a stored document and hydrate from it. */
 async function hydrateWith(entries: Record<string, unknown>) {
-  mocks.loadSettings.mockResolvedValue({ version: 1, entries });
+  mocks.invoke.mockImplementation((command: string) =>
+    command === "load_settings"
+      ? Promise.resolve({ version: 1, entries })
+      : Promise.resolve(undefined),
+  );
   await hydratePrefs();
 }
 
 beforeEach(() => {
   vi.useFakeTimers();
   resetPrefsForTest();
-  mocks.loadSettings.mockReset();
-  mocks.saveSettings.mockReset();
-  mocks.saveSettings.mockResolvedValue(undefined);
+  mocks.invoke.mockReset();
+  mocks.invoke.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -144,7 +148,7 @@ describe("definePrefs write", () => {
   it("does not persist before hydration", async () => {
     makeGroup().write("dpi", 300);
     await vi.advanceTimersByTimeAsync(1000);
-    expect(mocks.saveSettings).not.toHaveBeenCalled();
+    expect(savedDocs()).toEqual([]);
   });
 
   it("still serves the new value in-session when unhydrated", () => {
@@ -157,14 +161,15 @@ describe("definePrefs write", () => {
     await hydrateWith({});
     makeGroup().write("dpi", 300);
 
-    expect(mocks.saveSettings).not.toHaveBeenCalled();
+    expect(savedDocs()).toEqual([]);
     await vi.advanceTimersByTimeAsync(400);
 
-    expect(mocks.saveSettings).toHaveBeenCalledTimes(1);
-    expect(mocks.saveSettings.mock.calls[0]?.[0]).toEqual({
-      version: 1,
-      entries: { "tool:example": { format: "png", dpi: 300, locked: false } },
-    });
+    expect(savedDocs()).toEqual([
+      {
+        version: 1,
+        entries: { "tool:example": { format: "png", dpi: 300, locked: false } },
+      },
+    ]);
   });
 
   it("coalesces a burst of writes into one save", async () => {
@@ -174,7 +179,7 @@ describe("definePrefs write", () => {
     for (const dpi of [100, 200, 300, 400]) group.write("dpi", dpi);
     await vi.advanceTimersByTimeAsync(400);
 
-    expect(mocks.saveSettings).toHaveBeenCalledTimes(1);
+    expect(savedDocs()).toHaveLength(1);
     expect(group.read().dpi).toBe(400);
   });
 
@@ -183,16 +188,14 @@ describe("definePrefs write", () => {
     makeGroup().write("dpi", 300);
     await vi.advanceTimersByTimeAsync(400);
 
-    const doc = mocks.saveSettings.mock.calls[0]?.[0] as {
-      entries: Record<string, unknown>;
-    };
+    const doc = savedDocs()[0] as { entries: Record<string, unknown> };
     expect(doc.entries["tool:other"]).toEqual({ keep: true });
   });
 
   it("survives a rejected save without throwing", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    mocks.saveSettings.mockRejectedValue({ kind: "PermissionDenied" });
     await hydrateWith({});
+    mocks.invoke.mockRejectedValue({ kind: "PermissionDenied" });
 
     makeGroup().write("dpi", 300);
     await expect(flushPrefs()).resolves.toBeUndefined();
@@ -205,7 +208,7 @@ describe("definePrefs write", () => {
 
     await flushPrefs();
 
-    expect(mocks.saveSettings).toHaveBeenCalledTimes(1);
+    expect(savedDocs()).toHaveLength(1);
   });
 });
 
@@ -217,14 +220,14 @@ describe("hydratePrefs", () => {
 
   it("leaves the store unhydrated and silent when IPC is unavailable", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    mocks.loadSettings.mockRejectedValue(new Error("no tauri"));
+    mocks.invoke.mockRejectedValue(new Error("no tauri"));
 
     await expect(hydratePrefs()).resolves.toBeUndefined();
 
     expect(usePrefsStore.getState().hydrated).toBe(false);
     makeGroup().write("dpi", 300);
     await vi.advanceTimersByTimeAsync(1000);
-    expect(mocks.saveSettings).not.toHaveBeenCalled();
+    expect(savedDocs()).toEqual([]);
   });
 });
 

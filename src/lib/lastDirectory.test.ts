@@ -1,28 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  loadSettings: vi.fn(),
-  saveSettings: vi.fn(),
-}));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
 
-vi.mock("./settings", () => ({
-  loadSettings: mocks.loadSettings,
-  saveSettings: mocks.saveSettings,
-}));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
 
 import { hydratePrefs, resetPrefsForTest } from "./prefs";
 import { directoryCandidates, rememberDirectory } from "./lastDirectory";
 
 async function hydrateWith(entries: Record<string, unknown>) {
-  mocks.loadSettings.mockResolvedValue({ version: 1, entries });
+  mocks.invoke.mockImplementation((command: string) =>
+    command === "load_settings"
+      ? Promise.resolve({ version: 1, entries })
+      : Promise.resolve(undefined),
+  );
   await hydratePrefs();
 }
 
 beforeEach(() => {
   resetPrefsForTest();
-  mocks.loadSettings.mockReset();
-  mocks.saveSettings.mockReset();
-  mocks.saveSettings.mockResolvedValue(undefined);
+  mocks.invoke.mockReset();
+  mocks.invoke.mockResolvedValue(undefined);
 });
 
 describe("directoryCandidates", () => {

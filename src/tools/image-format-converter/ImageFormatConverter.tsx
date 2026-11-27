@@ -15,6 +15,7 @@ import {
   type RasterFormatDescriptor,
 } from "@/lib/imageFormats";
 import { convertImageFormat } from "@/lib/tools/imageFormatConverter";
+import { prefs, type SvgSizeMode } from "./prefs";
 import { fileName } from "@/lib/utils";
 import type {
   AlphaHandling,
@@ -63,18 +64,11 @@ export function ImageFormatConverter() {
   const [formats, setFormats] = useState<RasterFormatDescriptor[]>([]);
 
   // Options live outside ViewState so the user's choices survive state
-  // transitions — same pattern as Images → PDF's pageSize.
-  const [targetFormat, setTargetFormat] = useState<TargetFormat>("png");
-  const [jpegQuality, setJpegQuality] = useState<number>(85);
-  const [alphaHandling, setAlphaHandling] =
-    useState<AlphaHandling>("flatten-white");
-  // SVG raster size: "natural" or { "longest-edge-px": N }. We track them
-  // separately so toggling the radio doesn't lose the px value the user
-  // typed.
-  const [svgSizeMode, setSvgSizeMode] = useState<"natural" | "longest-edge-px">(
-    "longest-edge-px",
-  );
-  const [svgLongestEdgePx, setSvgLongestEdgePx] = useState<number>(1024);
+  // transitions, and in prefs so they survive the app closing.
+  const [
+    { targetFormat, jpegQuality, alphaHandling, svgSizeMode, svgLongestEdgePx },
+    setOption,
+  ] = prefs.use();
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -227,7 +221,9 @@ export function ImageFormatConverter() {
             <legend className="text-sm font-medium">Target format</legend>
             <RadioGroup
               value={targetFormat}
-              onValueChange={(value) => setTargetFormat(value as TargetFormat)}
+              onValueChange={(value) =>
+                setOption("targetFormat", value as TargetFormat)
+              }
               className="flex flex-wrap gap-6"
             >
               {formats.map((fmt) => {
@@ -254,7 +250,7 @@ export function ImageFormatConverter() {
                 max={100}
                 value={jpegQuality}
                 onChange={(event) =>
-                  setJpegQuality(Number(event.target.value) || 85)
+                  setOption("jpegQuality", Number(event.target.value) || 85)
                 }
                 className="w-24"
               />
@@ -269,7 +265,7 @@ export function ImageFormatConverter() {
               <RadioGroup
                 value={alphaHandling}
                 onValueChange={(value) =>
-                  setAlphaHandling(value as AlphaHandling)
+                  setOption("alphaHandling", value as AlphaHandling)
                 }
                 className="flex flex-wrap gap-6"
               >
@@ -297,7 +293,7 @@ export function ImageFormatConverter() {
               <RadioGroup
                 value={svgSizeMode}
                 onValueChange={(value) =>
-                  setSvgSizeMode(value as "natural" | "longest-edge-px")
+                  setOption("svgSizeMode", value as SvgSizeMode)
                 }
                 className="flex flex-wrap items-center gap-6"
               >
@@ -315,7 +311,10 @@ export function ImageFormatConverter() {
                     max={8192}
                     value={svgLongestEdgePx}
                     onChange={(event) =>
-                      setSvgLongestEdgePx(Number(event.target.value) || 1024)
+                      setOption(
+                        "svgLongestEdgePx",
+                        Number(event.target.value) || 1024,
+                      )
                     }
                     disabled={svgSizeMode !== "longest-edge-px"}
                     className="w-24"

@@ -27,6 +27,7 @@ import {
   revealInFolder,
 } from "@/lib/system";
 import { convertImagesToPdf } from "@/lib/tools/imagesToPdf";
+import { prefs } from "./prefs";
 import { fileName, fileStem } from "@/lib/utils";
 import type { AppErrorEnvelope, JobResult, PageSize, Progress } from "./types";
 
@@ -136,7 +137,7 @@ export function ImagesToPdf() {
   const [state, setState] = useState<ViewState>({ kind: "idle" });
   // pageSize lives outside ViewState so the user's choice survives state
   // transitions (e.g. an error returning to staging keeps the selection).
-  const [pageSize, setPageSize] = useState<PageSize>("auto-fit");
+  const [{ pageSize }, setOption] = prefs.use();
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -229,9 +230,11 @@ export function ImagesToPdf() {
 
   const cancel = () => abortRef.current?.abort();
 
+  // Clears the job, not the options: snapping the page size back to its
+  // default here would undo the user's remembered setting on the most
+  // common path through the tool.
   const reset = () => {
     setState({ kind: "idle" });
-    setPageSize("auto-fit");
   };
 
   return (
@@ -297,7 +300,9 @@ export function ImagesToPdf() {
             <legend className="text-sm font-medium">Page size</legend>
             <RadioGroup
               value={pageSize}
-              onValueChange={(value) => setPageSize(value as PageSize)}
+              onValueChange={(value) =>
+                setOption("pageSize", value as PageSize)
+              }
               className="flex flex-wrap gap-6"
             >
               <div className="flex items-center gap-2">
